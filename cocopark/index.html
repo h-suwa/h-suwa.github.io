@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>スタンプラリー＆投票</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: 'Hiragino Sans', 'Meiryo', 'Noto Sans JP', sans-serif; }
+    .page { animation: fadeIn 0.15s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .tap-card { transition: transform 0.1s, box-shadow 0.1s; cursor: pointer; }
+    .tap-card:active { transform: scale(0.97); }
+    .bounce { animation: bounce 0.4s ease; }
+    @keyframes bounce { 0%,100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+    @keyframes pulse-ring { 0% { opacity:1; } 50% { opacity:0.4; } 100% { opacity:1; } }
+    .live-dot { animation: pulse-ring 1.2s ease-in-out infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { width: 28px; height: 28px; border: 3px solid #d1fae5; border-top-color: #22c55e; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @media print {
+      #bottom-nav, .no-print { display: none !important; }
+      .qr-card { break-inside: avoid; }
+      body { background: white !important; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <div id="app" class="max-w-md mx-auto pb-24"></div>
+
+  <!-- Bottom Navigation -->
+  <nav id="bottom-nav" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-50">
+    <div class="max-w-md mx-auto flex">
+      <button onclick="go('/home')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/home">   <span class="text-xl">🏠</span><span>ホーム</span></button>
+      <button onclick="go('/scan')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/scan">   <span class="text-xl">📷</span><span>スキャン</span></button>
+      <button onclick="go('/vote')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/vote">   <span class="text-xl">🗳️</span><span>投票</span></button>
+      <button onclick="go('/me')"     class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/me">     <span class="text-xl">👤</span><span>マイページ</span></button>
+    </div>
+  </nav>
+
+<script>
+// ============================================================
+// CONFIG
+// Supabase の接続情報。空のままだと「デモモード」（このブラウザ内だけで動作）になります。
+// ============================================================
+const SUPABASE_URL      = 'https://vbcxafnskkfdecgeynqz.supabase.co';   // 例: 'https://xxxxxxxx.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_cHzJYKYK_voCzA3DoW5Gqg_Ob2N06q7';   // Publishable key（anon key）
+const DEMO = !(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+// ============================================================
+// INITIAL DATA（デモモード用。Supabase では supabase/schema.sql の初期データを使用）
+// ============================================================
+const DEFAULT_EXHIBITORS = [
+  { id:'ex01', name:'グリーンカフェ',       category:'フード・ドリンク',     emoji:'☕',  co2:0.3 },
+  { id:'ex02', name:'ナチュラルキッチン',   category:'フード・ドリンク',     emoji:'🍱',  co2:0.4 },
+  { id:'ex03', name:'パークスムージー',     category:'フード・ドリンク',     emoji:'🥤',  co2:0.3 },
+  { id:'ex04', name:'焼き菓子のお店',       category:'フード・ドリンク',     emoji:'🧁',  co2:0.2 },
+  { id:'ex05', name:'フラワーショップ花',   category:'クラフト・雑貨',       emoji:'🌸',  co2:0.5 },
+  { id:'ex06', name:'ウッドクラフト工房',   category:'クラフト・雑貨',       emoji:'🪵',  co2:0.8 },
+  { id:'ex07', name:'ハンドメイドアクセサリー', category:'クラフト・雑貨',   emoji:'💍',  co2:0.6 },
+  { id:'ex08', name:'キャンドル工房',       category:'クラフト・雑貨',       emoji:'🕯️', co2:0.4 },
+  { id:'ex09', name:'アートギャラリー',     category:'クラフト・雑貨',       emoji:'🖼️', co2:0.3 },
+  { id:'ex10', name:'キッズアトリエ',       category:'体験・アクティビティ', emoji:'🎨',  co2:0.7 },
+  { id:'ex11', name:'ヨガスタジオ',         category:'体験・アクティビティ', emoji:'🧘',  co2:1.0 },
+  { id:'ex12', name:'フォトスポット',       category:'体験・アクティビティ', emoji:'📸',  co2:0.2 },
+  { id:'ex13', name:'スポーツ体験コーナー', category:'体験・アクティビティ', emoji:'⚽',  co2:0.8 },
+  { id:'ex14', name:'アロマテラピー',       category:'ウェルネス',           emoji:'🌿',  co2:0.6 },
+  { id:'ex15', name:'マッサージコーナー',   category:'ウェルネス',           emoji:'💆',  co2:0.5 },
+  { id:'ex16', name:'ハーブガーデン',       category:'ウェルネス',           emoji:'🌱',  co2:1.2 },
+  { id:'ex17', name:'ミュージックステージ', category:'エンタメ',             emoji:'🎵',  co2:0.4 },
+  { id:'ex18', name:'ペット写真館',         category:'エンタメ',             emoji:'🐾',  co2:0.3 },
+  { id:'ex19', name:'エコショップ',         category:'サステナブル',         emoji:'♻️', co2:2.0 },
+  { id:'ex20', name:'ベジタブルマーケット', category:'フード・ドリンク',     emoji:'🥦',  co2:1.0 },
+];
+
+const DEFAULT_CANDIDATES = [
+  { id:'ca01', name:'グリーンカフェ',       category:'フード・ドリンク', emoji:'☕' },
+  { id:'ca02', name:'フラワーショップ花',   category:'クラフト・雑貨',   emoji:'🌸' },
+  { id:'ca03', name:'キッズアトリエ',       category:'体験・アクティビティ', emoji:'🎨' },
+  { id:'ca04', name:'アロマテラピー',       category:'ウェルネス',       emoji:'🌿' },
+  { id:'ca05', name:'ミュージックステージ', category:'エンタメ',         emoji:'🎵' },
+  { id:'ca06', name:'エコショップ',         category:'サステナブル',     emoji:'♻️' },
+  { id:'ca07', name:'ウッドクラフト工房',   category:'クラフト・雑貨',   emoji:'🪵' },
+  { id:'ca08', name:'ヨガスタジオ',         category:'体験・アクティビティ', emoji:'🧘' },
+];
+
+// ============================================================
+// BACKEND: DEMO（localStorage 上でサーバーの動きを再現）
+// ============================================================
+const DemoDB = {
+  KEY: 'demo_db',
+  load() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch {}
+    if (!d) {
+      d = {
+        settings: { event_name:'公園フェス2026', voting_open:false, interim_revealed:false, results_revealed:false },
+        pw: 'admin1234',
+        exhibitors: DEFAULT_EXHIBITORS.map((e, i) => ({ ...e, sort:i })),
+        candidates: DEFAULT_CANDIDATES.map((c, i) => ({ ...c, sort:i })),
+        visitors: {}, scans: [], votes: [],
+      };
+      this.save(d);
+    }
+    return d;
+  },
+  save(d) { localStorage.setItem(this.KEY, JSON.stringify(d)); },
+};
+
+const DemoAPI = {
+  async getPublic() {
+    const d = DemoDB.load();
+    return { settings:d.settings, exhibitors:d.exhibitors, candidates:d.candidates };
+  },
+  async register(nick) {
+    const d = DemoDB.load();
+    const id = 'd' + Math.random().toString(36).slice(2, 12);
+    d.visitors[id] = { nickname:nick };
+    DemoDB.save(d);
+    return id;
+  },
+  async getMe(vid) {
+    const d = DemoDB.load();
+    if (!d.visitors[vid]) return { exists:false, scans:[], votes:{} };
+    const votes = {};
+    d.votes.filter(v => v.v === vid).forEach(v => { votes[v.c] = (votes[v.c] || 0) + v.p; });
+    return { exists:true, scans:d.scans.filter(s => s.v === vid).map(s => s.e), votes };
+  },
+  async addScan(vid, eid) {
+    const d = DemoDB.load();
+    if (!d.visitors[vid]) throw new Error('unknown_visitor');
+    if (!d.exhibitors.some(e => e.id === eid)) throw new Error('invalid_exhibitor');
+    if (d.scans.some(s => s.v === vid && s.e === eid)) return false;
+    d.scans.push({ v:vid, e:eid });
+    DemoDB.save(d);
+    return true;
+  },
+  async submitVotes(vid, votes) {
+    const d = DemoDB.load();
+    if (!d.settings.voting_open) throw new Error('voting_closed');
+    if (!d.visitors[vid]) throw new Error('unknown_visitor');
+    const entries = Object.entries(votes).filter(([, n]) => n > 0);
+    const req   = entries.reduce((a, [, n]) => a + n, 0);
+    const total = d.scans.filter(s => s.v === vid).length;
+    const spent = d.votes.filter(v => v.v === vid).reduce((a, v) => a + v.p, 0);
+    if (req <= 0) throw new Error('empty');
+    if (req !== total - spent) throw new Error('points_mismatch');
+    if (entries.some(([c]) => !d.candidates.some(x => x.id === c))) throw new Error('invalid_candidate');
+    entries.forEach(([c, n]) => d.votes.push({ v:vid, c, p:n }));
+    DemoDB.save(d);
+    return true;
+  },
+  async getResults(pw) {
+    const d = DemoDB.load();
+    if (!(d.settings.interim_revealed || d.settings.results_revealed || pw === d.pw)) throw new Error('not_revealed');
+    return {
+      candidates: d.candidates.map(c => {
+        const vs = d.votes.filter(v => v.c === c.id);
+        return { id:c.id, name:c.name, category:c.category, emoji:c.emoji,
+                 pts: vs.reduce((a, v) => a + v.p, 0), sup: new Set(vs.map(v => v.v)).size };
+      }),
+      voters:   new Set(d.votes.map(v => v.v)).size,
+      visitors: Object.keys(d.visitors).length,
+      scans:    d.scans.length,
+      co2:      d.scans.reduce((a, s) => a + (d.exhibitors.find(e => e.id === s.e)?.co2 || 0), 0),
+    };
+  },
+  async adminLogin(pw) { return pw === DemoDB.load().pw; },
+  _admin(pw) {
+    const d = DemoDB.load();
+    if (pw !== d.pw) throw new Error('unauthorized');
+    return d;
+  },
+  async adminUpdateSettings(pw, patch) {
+    const d = this._admin(pw);
+    for (const k of ['event_name','voting_open','interim_revealed','results_revealed']) if (k in patch) d.settings[k] = patch[k];
+    if (patch.new_pw) d.pw = patch.new_pw;
+    DemoDB.save(d);
+  },
+  async adminUpsertExhibitor(pw, ex) {
+    const d = this._admin(pw);
+    const i = d.exhibitors.findIndex(e => e.id === ex.id);
+    if (i >= 0) d.exhibitors[i] = { ...d.exhibitors[i], ...ex };
+    else d.exhibitors.push({ ...ex, sort:d.exhibitors.length });
+    DemoDB.save(d);
+  },
+  async adminDeleteExhibitor(pw, id) {
+    const d = this._admin(pw);
+    d.exhibitors = d.exhibitors.filter(e => e.id !== id);
+    d.scans      = d.scans.filter(s => s.e !== id);
+    DemoDB.save(d);
+  },
+  async adminUpsertCandidate(pw, c) {
+    const d = this._admin(pw);
+    const i = d.candidates.findIndex(x => x.id === c.id);
+    if (i >= 0) d.candidates[i] = { ...d.candidates[i], ...c };
+    else d.candidates.push({ ...c, sort:d.candidates.length });
+    DemoDB.save(d);
+  },
+  async adminDeleteCandidate(pw, id) {
+    const d = this._admin(pw);
+    d.candidates = d.candidates.filter(c => c.id !== id);
+    d.votes      = d.votes.filter(v => v.c !== id);
+    DemoDB.save(d);
+  },
+  async adminResetAll(pw) {
+    const d = this._admin(pw);
+    d.visitors = {}; d.scans = []; d.votes = [];
+    DemoDB.save(d);
+  },
+};
+
+// ============================================================
+// BACKEND: SUPABASE
+// ============================================================
+const sb = DEMO ? null : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession:false } });
+
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw new Error(error.message || 'error');
+  return data;
+}
+
+const RemoteAPI = {
+  async getPublic() {
+    const [s, e, c] = await Promise.all([
+      sb.from('settings').select('*').eq('id', 1).single(),
+      sb.from('exhibitors').select('*').order('sort').order('id'),
+      sb.from('candidates').select('*').order('sort').order('id'),
+    ]);
+    for (const r of [s, e, c]) if (r.error) throw new Error(r.error.message);
+    return { settings:s.data, exhibitors:e.data.map(x => ({ ...x, co2:Number(x.co2) })), candidates:c.data };
+  },
+  register:             (nick)       => rpc('register_visitor', { p_nick:nick }),
+  getMe:                (vid)        => rpc('get_me', { p_visitor:vid }),
+  addScan:              (vid, eid)   => rpc('add_scan', { p_visitor:vid, p_exhibitor:eid }),
+  submitVotes:          (vid, votes) => rpc('submit_votes', { p_visitor:vid, p_votes:votes }),
+  getResults: async     (pw)         => { const r = await rpc('get_results', { p_pw:pw || null }); r.co2 = Number(r.co2); return r; },
+  adminLogin:           (pw)         => rpc('admin_login', { p_pw:pw }),
+  adminUpdateSettings:  (pw, patch)  => rpc('admin_update_settings', { p_pw:pw, p_patch:patch }),
+  adminUpsertExhibitor: (pw, ex)     => rpc('admin_upsert_exhibitor', { p_pw:pw, p:ex }),
+  adminDeleteExhibitor: (pw, id)     => rpc('admin_delete_exhibitor', { p_pw:pw, p_id:id }),
+  adminUpsertCandidate: (pw, c)      => rpc('admin_upsert_candidate', { p_pw:pw, p:c }),
+  adminDeleteCandidate: (pw, id)     => rpc('admin_delete_candidate', { p_pw:pw, p_id:id }),
+  adminResetAll:        (pw)         => rpc('admin_reset_all', { p_pw:pw }),
+};
+
+const API = DEMO ? DemoAPI : RemoteAPI;
+
+const ERR = {
+  voting_closed:     '投票は現在受け付けていません',
+  points_mismatch:   'ポイント数が一致しませんでした。最新の状態に更新します。',
+  unauthorized:      'パスワードが違います',
+  not_revealed:      'まだ公開されていません',
+  invalid_exhibitor: 'このQRコードは無効です',
+  unknown_visitor:   '来場者情報が見つかりません',
+  empty:             'ポイントを配分してください',
+  invalid_candidate: '投票対象が見つかりません。画面を更新してください。',
+};
+function errMsg(e) {
+  const m = e?.message || '';
+  return ERR[m] || ('通信エラーが発生しました（' + m + '）');
+}
+
+// ============================================================
+// CLIENT STATE
+// ============================================================
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const sum = (obj) => Object.values(obj).reduce((a, b) => a + b, 0);
+
+// サーバーから取得したデータのキャッシュ
+const C = { settings:{}, exhibitors:[], candidates:[], me:{ scans:[], votes:{} }, _pubAt:0 };
+
+async function loadPublic(force) {
+  if (!force && Date.now() - C._pubAt < 10000) return;
+  Object.assign(C, await API.getPublic());
+  C._pubAt = Date.now();
+}
+
+// この端末の来場者情報（IDとニックネーム、未確定の配分）
+const V = {
+  vid:      () => localStorage.getItem('vid')  || '',
+  nick:     () => localStorage.getItem('nick') || '',
+  set:      (vid, nick) => { localStorage.setItem('vid', vid); localStorage.setItem('nick', nick); },
+  clear:    () => ['vid', 'nick', 'draft'].forEach(k => localStorage.removeItem(k)),
+  draft:    () => { try { return JSON.parse(localStorage.getItem('draft') || '{}'); } catch { return {}; } },
+  setDraft: (d) => localStorage.setItem('draft', JSON.stringify(d)),
+};
+
+// 存在する投票対象への正の配分だけを残す
+function cleanDraft() {
+  const ids = new Set(C.candidates.map(c => c.id));
+  const out = {};
+  for (const [k, v] of Object.entries(V.draft())) if (ids.has(k) && v > 0) out[k] = v;
+  return out;
+}
+
+const P = {
+  total: () => C.me.scans.length,             // 獲得ポイント
+  spent: () => sum(C.me.votes),               // 確定済み投票数
+  used:  () => sum(cleanDraft()),             // 配分中
+  rem:   () => P.total() - P.spent() - P.used(),
+};
+
+async function ensureMe() {
+  const vid = V.vid();
+  const valid = DEMO || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vid);
+  const me = valid ? await API.getMe(vid) : { exists:false };
+  if (!me.exists) { V.clear(); go('/'); return false; }
+  C.me = { scans:me.scans || [], votes:me.votes || {} };
+  return true;
+}
+
+// CO2表示フォーマット (kg単位、小さい場合はg表示)
+function fmtCO2(kg) {
+  kg = Number(kg) || 0;
+  if (kg === 0) return '0g';
+  if (kg < 1) return Math.round(kg * 1000) + 'g';
+  return kg.toFixed(1) + 'kg';
+}
+
+function fmtTime() {
+  return new Date().toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+
+// ============================================================
+// ROUTER
+// ============================================================
+let _seq = 0;
+let _timers = [];
+function stopTimers() { _timers.forEach(clearInterval); _timers = []; }
+function every(ms, fn) { _timers.push(setInterval(fn, ms)); }
+
+function go(path) {
+  history.pushState({}, '', '#' + path);
+  render();
+}
+window.addEventListener('popstate', render);
+window.addEventListener('hashchange', render);
+
+function currentPath() {
+  return (location.hash || '#/').slice(1) || '/';
+}
+
+const PUBLIC_PATHS = ['/', '/results', '/interim'];
+
+async function render() {
+  const seq  = ++_seq;
+  stopTimers();
+  const path = currentPath();
+  const app  = document.getElementById('app');
+  const isAdmin = path.startsWith('/admin');
+
+  // 来場者登録がまだなら、QRの行き先を覚えておいて登録画面へ
+  if (!isAdmin && !PUBLIC_PATHS.includes(path) && !V.vid()) {
+    if (path.startsWith('/scan/')) localStorage.setItem('pendingScan', path);
+    go('/'); return;
+  }
+
+  updateNav(path);
+  if (!app.innerHTML.trim()) app.innerHTML = pageLoading();
+
+  try {
+    const html = await buildPage(path);
+    if (seq !== _seq || html === null) return;   // 別の画面に移動済み
+    app.innerHTML = html;
+    afterRender(path);
+  } catch (e) {
+    if (seq !== _seq) return;
+    console.error(e);
+    app.innerHTML = pageError(e);
+  }
+}
+
+function updateNav(path) {
+  const nav = document.getElementById('bottom-nav');
+  const showNav = V.vid() && !path.startsWith('/admin') && path !== '/';
+  nav.classList.toggle('hidden', !showNav);
+  if (!showNav) return;
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    const active = path.startsWith(btn.dataset.path);
+    btn.classList.toggle('text-green-600', active);
+    btn.classList.toggle('font-bold', active);
+    btn.classList.toggle('text-gray-400', !active);
+  });
+}
+
+async function buildPage(path) {
+  if (path === '/') {
+    if (V.vid()) { go('/home'); return null; }
+    await loadPublic();
+    return pageWelcome();
+  }
+  if (path.startsWith('/admin')) return buildAdmin(path);
+
+  if (path === '/results' || path === '/interim') {
+    await loadPublic(true);
+    const key = path === '/results' ? 'results_revealed' : 'interim_revealed';
+    if (!C.settings[key]) return pageLocked(path === '/results' ? '結果はまだ公開されていません' : '中間発表はまだ公開されていません');
+    const R = await API.getResults(null);
+    return path === '/results' ? pageResults(R) : pageInterim(R);
+  }
+
+  await loadPublic(path === '/home' || path === '/vote' || path.startsWith('/scan/'));
+  if (!(await ensureMe())) return null;
+
+  if (path === '/home') return pageHome();
+  if (path === '/scan') return pageScanList();
+  if (path.startsWith('/scan/')) {
+    const id = decodeURIComponent(path.split('/')[2] || '');
+    const ex = C.exhibitors.find(e => e.id === id);
+    if (!ex) return pageScanInvalid();
+    const isNew = await API.addScan(V.vid(), id);
+    if (isNew) C.me.scans.push(id);
+    return pageScanResult(ex, isNew);
+  }
+  if (path === '/me')   return pageMe();
+  if (path === '/vote') return pageVote();
+  return `<div class="p-8 text-center text-gray-400">ページが見つかりません</div>`;
+}
+
+function afterRender(path) {
+  if (path === '/home') {
+    // 投票開始・結果公開を検知してボタンを出す
+    every(20000, async () => {
+      const before = JSON.stringify(C.settings);
+      try { await loadPublic(true); } catch { return; }
+      if (currentPath() === '/home' && JSON.stringify(C.settings) !== before) render();
+    });
+  }
+  if (path === '/results' || path === '/interim') startLive(path);
+  if (path === '/admin/qr') setTimeout(genQRCodes, 80);
+}
+
+// ============================================================
+// COMMON PARTS
+// ============================================================
+function pageLoading() {
+  return `<div class="min-h-screen flex flex-col items-center justify-center gap-3 text-gray-400 text-sm">
+    <div class="spinner"></div><span>読み込み中...</span></div>`;
+}
+
+function pageError(e) {
+  return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="text-6xl mb-4">⚠️</div>
+    <p class="text-gray-600 font-bold mb-2">${esc(errMsg(e))}</p>
+    <p class="text-xs text-gray-400 mb-8">電波の良い場所で、もう一度お試しください。</p>
+    <button onclick="render()" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl tap-card">再読み込み</button>
+  </div>`;
+}
+
+function pageLocked(msg) {
+  return `
+  <div class="page p-8 text-center min-h-screen flex flex-col items-center justify-center">
+    <div class="text-6xl mb-4">🔒</div>
+    <p class="text-gray-400">${msg}</p>
+    <button onclick="go('/home')" class="mt-6 text-sm text-green-500 underline">ホームに戻る</button>
+  </div>`;
+}
+
+function groupBy(items) {
+  const groups = {};
+  items.forEach(x => { (groups[x.category] = groups[x.category] || []).push(x); });
+  return groups;
+}
+
+// ============================================================
+// PAGE: WELCOME
+// ============================================================
+function pageWelcome() {
+  return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6">
+    <div class="text-7xl mb-3">🌿</div>
+    <h1 class="text-2xl font-bold text-green-700">${esc(C.settings.event_name)}</h1>
+    <p class="text-gray-400 text-sm mb-10">スタンプラリー＆投票</p>
+
+    <div class="w-full bg-white rounded-2xl shadow-sm p-6">
+      <p class="text-sm text-gray-500 mb-3">ニックネームを入力して始めよう！</p>
+      <input id="nickInput" type="text" maxlength="20" placeholder="例：さくら"
+        class="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg mb-4 focus:outline-none focus:ring-2 focus:ring-green-300"
+        onkeydown="if(event.key==='Enter')startApp()">
+      <button id="startBtn" onclick="startApp()"
+        class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3.5 rounded-xl text-lg transition-colors">
+        はじめる 🎉
+      </button>
+      ${localStorage.getItem('pendingScan') ? `<p class="text-xs text-green-600 mt-3 text-center">登録が終わると、読み取ったブースのスタンプが押されます</p>` : ''}
+    </div>
+
+    ${DEMO ? `<p class="mt-6 text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full">デモモード（このブラウザ内だけで動作中）</p>` : ''}
+    <button onclick="go('/admin')" class="mt-6 text-xs text-gray-300 underline no-print">主催者ログイン</button>
+  </div>`;
+}
+
+async function startApp() {
+  const input = document.getElementById('nickInput');
+  const n = input.value.trim();
+  if (!n) { input.classList.add('ring-2','ring-red-300'); return; }
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true; btn.textContent = '登録中...';
+  try {
+    const vid = await API.register(n);
+    V.set(vid, n);
+    V.setDraft({});
+    const pending = localStorage.getItem('pendingScan');
+    localStorage.removeItem('pendingScan');
+    go(pending || '/home');
+  } catch (e) {
+    alert(errMsg(e));
+    btn.disabled = false; btn.textContent = 'はじめる 🎉';
+  }
+}
+
+// ============================================================
+// PAGE: HOME
+// ============================================================
+function pageHome() {
+  const s     = C.settings;
+  const exs   = C.exhibitors;
+  const total = P.total();
+  const rem   = P.rem();
+  const sub   = P.spent() > 0;
+
+  const recentExs = C.me.scans.slice(-3).reverse()
+    .map(id => exs.find(e => e.id === id)).filter(Boolean);
+
+  return `
+  <div class="page p-4">
+    <!-- Hero card -->
+    <div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-5 mb-4 relative overflow-hidden">
+      <div class="absolute -top-4 -right-4 text-9xl opacity-10 select-none">🌿</div>
+      <p class="text-green-100 text-xs mb-1">${esc(s.event_name)}</p>
+      <h1 class="text-xl font-bold">こんにちは、${esc(V.nick())}さん！</h1>
+      <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+        <div class="bg-white bg-opacity-20 rounded-xl py-2">
+          <div class="text-2xl font-bold">${total}</div>
+          <div class="text-xs text-green-100">スタンプ</div>
+        </div>
+        <div class="bg-white bg-opacity-20 rounded-xl py-2">
+          <div class="text-2xl font-bold">${exs.length}</div>
+          <div class="text-xs text-green-100">ブース数</div>
+        </div>
+        <div class="bg-white bg-opacity-20 rounded-xl py-2">
+          <div class="text-2xl font-bold">${rem}</div>
+          <div class="text-xs text-green-100">残り票</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="bg-white rounded-2xl p-4 mb-4 shadow-sm">
+      <div class="flex justify-between text-sm mb-2">
+        <span class="text-gray-500">ブース訪問進捗</span>
+        <span class="font-bold text-green-600">${total} / ${exs.length}</span>
+      </div>
+      <div class="bg-gray-100 rounded-full h-3 overflow-hidden">
+        <div class="bg-green-400 h-3 rounded-full transition-all duration-500"
+          style="width:${exs.length ? Math.min(100, Math.round(total/exs.length*100)) : 0}%"></div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div onclick="go('/scan')" class="bg-white rounded-2xl p-4 shadow-sm text-center tap-card border-2 border-dashed border-green-100 hover:border-green-300 transition-colors">
+        <div class="text-4xl mb-1">📷</div>
+        <div class="font-bold text-gray-700 text-sm">QRスキャン</div>
+        <div class="text-xs text-gray-400 mt-0.5">ブースを訪問</div>
+      </div>
+      ${s.voting_open && rem > 0
+        ? `<div onclick="go('/vote')" class="bg-green-500 rounded-2xl p-4 shadow-sm text-center tap-card text-white">
+            <div class="text-4xl mb-1">🗳️</div>
+            <div class="font-bold text-sm">${sub ? '追加投票する' : '投票する'}</div>
+            <div class="text-xs text-green-100 mt-0.5">${rem}票 使えます</div>
+           </div>`
+        : `<div onclick="go('/me')" class="bg-white rounded-2xl p-4 shadow-sm text-center tap-card">
+            <div class="text-4xl mb-1">👤</div>
+            <div class="font-bold text-gray-700 text-sm">マイページ</div>
+            <div class="text-xs text-gray-400 mt-0.5">訪問履歴を見る</div>
+           </div>`}
+    </div>
+
+    ${sub ? `
+    <div class="bg-green-50 border border-green-200 rounded-xl p-3 text-center text-sm text-green-700 mb-4">
+      ✅ 投票済みです。結果発表をお待ちください！
+    </div>` : ''}
+
+    ${s.interim_revealed ? `
+    <button onclick="go('/interim')" class="w-full bg-blue-500 text-white font-bold py-3.5 rounded-xl mb-3 text-lg tap-card">
+      🎉 中間発表を見る！
+    </button>` : ''}
+
+    ${s.results_revealed ? `
+    <button onclick="go('/results')" class="w-full bg-amber-400 text-amber-900 font-bold py-3.5 rounded-xl mb-4 text-lg tap-card">
+      🏆 結果を見る！
+    </button>` : ''}
+
+    <!-- Recent visits -->
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">最近訪問したブース</h3>
+      ${recentExs.length === 0
+        ? `<div class="text-center py-6 text-gray-300">
+             <div class="text-4xl mb-2">📍</div>
+             <p class="text-xs">まだ訪問していません。<br>QRコードをスキャンしてみよう！</p>
+           </div>`
+        : recentExs.map(ex => `
+          <div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+            <span class="text-2xl">${esc(ex.emoji)}</span>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate">${esc(ex.name)}</div>
+              <div class="text-xs text-gray-400">${esc(ex.category)}</div>
+            </div>
+            <span class="text-green-500 text-xs font-bold shrink-0">✓ 訪問済</span>
+          </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// PAGE: SCAN LIST
+// デモモードではタップで訪問を記録できる。本番ではQRを読み取った時だけ記録。
+// ============================================================
+function pageScanList() {
+  const exs   = C.exhibitors;
+  const scans = C.me.scans;
+  const groups = groupBy(exs);
+
+  return `
+  <div class="page p-4">
+    <div class="flex items-center gap-2 mb-3">
+      <button onclick="go('/home')" class="text-gray-400 text-lg">←</button>
+      <h2 class="text-lg font-bold">ブース一覧</h2>
+      <span class="ml-auto text-xs text-green-600 font-bold">${scans.length}/${exs.length} 訪問済</span>
+    </div>
+
+    ${DEMO
+      ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs text-amber-700">
+          💡 デモモードです。ブース名をタップして訪問を記録できます。
+         </div>`
+      : `<div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-sm text-green-700">
+          <div class="font-bold mb-1">📷 スタンプのもらい方</div>
+          <div class="text-xs leading-relaxed">各ブースに貼ってあるQRコードを、スマホのカメラで読み取ってください。<br>
+          ※ このページを開いているのと同じブラウザで開いてください。</div>
+         </div>`}
+
+    ${Object.entries(groups).map(([cat, items]) => `
+      <div class="mb-4">
+        <h3 class="text-xs font-bold text-gray-400 mb-2 px-1 uppercase tracking-wider">${esc(cat)}</h3>
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+          ${items.map((ex, i) => {
+            const visited  = scans.includes(ex.id);
+            const tappable = DEMO && !visited;
+            return `
+            <div class="flex items-center gap-3 px-4 py-3 ${i < items.length - 1 ? 'border-b border-gray-50' : ''} ${visited ? 'opacity-50' : ''} ${tappable ? 'cursor-pointer active:bg-gray-50' : ''}"
+              ${tappable ? `onclick="go('/scan/${ex.id}')"` : ''}>
+              <span class="text-2xl">${esc(ex.emoji)}</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium truncate">${esc(ex.name)}</div>
+              </div>
+              ${visited
+                ? '<span class="text-green-500 text-sm font-bold shrink-0">✓</span>'
+                : (tappable ? '<span class="text-gray-300 shrink-0">›</span>' : '')}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+// ============================================================
+// PAGE: SCAN RESULT (QR landing)
+// ============================================================
+function pageScanInvalid() {
+  return `<div class="page p-8 text-center min-h-screen flex flex-col items-center justify-center">
+    <div class="text-5xl mb-4">❌</div>
+    <p class="text-red-400 font-bold">このQRコードは無効です</p>
+    <button onclick="go('/home')" class="mt-6 text-green-500 underline text-sm">ホームに戻る</button>
+  </div>`;
+}
+
+function pageScanResult(ex, isNew) {
+  const total = P.total();
+  const myCO2 = C.me.scans.reduce((a, id) => a + (C.exhibitors.find(e => e.id === id)?.co2 || 0), 0);
+
+  return isNew ? `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="text-8xl mb-2 bounce">${esc(ex.emoji)}</div>
+    <div class="text-5xl mb-4">⭐</div>
+    <h2 class="text-2xl font-bold text-green-600 mb-1">スタンプゲット！</h2>
+    <p class="font-medium text-gray-700 mb-1">${esc(ex.name)}</p>
+    <p class="text-xs text-gray-400 mb-4">${esc(ex.category)}</p>
+
+    ${ex.co2 ? `
+    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-3 mb-4 flex items-center gap-3">
+      <span class="text-3xl">🌱</span>
+      <div class="text-left">
+        <div class="text-xs text-emerald-500 font-bold">このブースでのCO₂削減</div>
+        <div class="text-2xl font-bold text-emerald-600">${fmtCO2(ex.co2)}</div>
+      </div>
+    </div>` : ''}
+
+    <div class="grid grid-cols-2 gap-3 w-full mb-8">
+      <div class="bg-green-50 border border-green-200 rounded-2xl py-3">
+        <div class="text-2xl font-bold text-green-600">${total}</div>
+        <div class="text-xs text-gray-500">スタンプ合計</div>
+      </div>
+      <div class="bg-emerald-50 border border-emerald-200 rounded-2xl py-3">
+        <div class="text-2xl font-bold text-emerald-600">${fmtCO2(myCO2)}</div>
+        <div class="text-xs text-gray-500">累計CO₂削減</div>
+      </div>
+    </div>
+    <button onclick="go('/home')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl mb-3 tap-card">
+      ホームに戻る
+    </button>
+    <button onclick="go('/scan')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3.5 rounded-xl tap-card">
+      他のブースも見る
+    </button>
+  </div>` : `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="text-7xl mb-4">${esc(ex.emoji)}</div>
+    <h2 class="text-xl font-bold text-gray-500 mb-2">すでに訪問済みです</h2>
+    <p class="text-gray-400 text-sm mb-8">${esc(ex.name)}</p>
+    <button onclick="go('/home')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl tap-card">
+      ホームに戻る
+    </button>
+  </div>`;
+}
+
+// ============================================================
+// PAGE: MY PAGE
+// ============================================================
+function pageMe() {
+  const exs   = C.exhibitors;
+  const scans = C.me.scans;
+  const myCO2 = scans.reduce((a, id) => a + (exs.find(e => e.id === id)?.co2 || 0), 0);
+  const voted = C.candidates.filter(c => (C.me.votes[c.id] || 0) > 0)
+    .sort((a, b) => C.me.votes[b.id] - C.me.votes[a.id]);
+
+  return `
+  <div class="page p-4">
+    <h2 class="text-lg font-bold mb-4">マイページ</h2>
+
+    <div class="bg-white rounded-2xl p-5 shadow-sm mb-4 text-center">
+      <div class="w-16 h-16 bg-green-100 text-2xl rounded-full flex items-center justify-center mx-auto mb-2 font-bold text-green-700">
+        ${esc([...V.nick()][0] || '')}
+      </div>
+      <h3 class="font-bold text-lg">${esc(V.nick())}</h3>
+      <p class="text-xs text-gray-400">来場者</p>
+    </div>
+
+    <div class="grid grid-cols-3 gap-3 mb-3">
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-2xl font-bold text-green-500">${P.total()}</div>
+        <div class="text-xs text-gray-400 mt-0.5">スタンプ数</div>
+      </div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-2xl font-bold text-blue-500">${P.spent()}</div>
+        <div class="text-xs text-gray-400 mt-0.5">総投票数</div>
+      </div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-2xl font-bold text-orange-400">${P.rem()}</div>
+        <div class="text-xs text-gray-400 mt-0.5">残り票</div>
+      </div>
+    </div>
+    <!-- CO2削減カード -->
+    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4 flex items-center gap-4">
+      <span class="text-4xl">🌱</span>
+      <div>
+        <div class="text-xs text-emerald-500 font-bold mb-0.5">あなたのCO₂削減貢献量</div>
+        <div class="text-3xl font-bold text-emerald-600">${fmtCO2(myCO2)}</div>
+        <div class="text-xs text-gray-400 mt-0.5">${P.total()}ブース訪問分</div>
+      </div>
+    </div>
+
+    ${voted.length ? `
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">あなたの投票 (${P.spent()}票)</h3>
+      ${voted.map(c => `
+        <div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+          <span class="text-xl">${esc(c.emoji)}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">${esc(c.name)}</div>
+            <div class="text-xs text-gray-400">${esc(c.category)}</div>
+          </div>
+          <span class="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full font-bold">${C.me.votes[c.id]}票</span>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-6">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">訪問したブース (${scans.length}/${exs.length})</h3>
+      ${scans.length === 0
+        ? `<p class="text-center text-gray-300 text-sm py-4">まだ訪問していません</p>`
+        : scans.map(id => {
+            const ex = exs.find(e => e.id === id);
+            return ex ? `
+            <div class="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+              <span class="text-xl">${esc(ex.emoji)}</span>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium truncate">${esc(ex.name)}</div>
+                <div class="text-xs text-gray-400">${esc(ex.category)}</div>
+              </div>
+              <span class="text-green-500 text-xs font-bold">✓</span>
+            </div>` : '';
+          }).join('')}
+    </div>
+
+    ${DEMO ? `
+    <button onclick="if(confirm('この端末の来場者データをリセットしますか？\\n（新しい来場者として登録し直します）')){V.clear();go('/')}"
+      class="w-full text-xs text-gray-300 py-2 underline">
+      来場者をリセット（デモ用）
+    </button>` : ''}
+  </div>`;
+}
+
+// ============================================================
+// PAGE: VOTE
+// ============================================================
+function pageVote() {
+  const s   = C.settings;
+  const sub = P.spent() > 0;
+  if (P.total() - P.spent() - P.used() < 0) V.setDraft({});   // 配分が持ち点を超えていたら（全消去後など）やり直し
+
+  // 確定済みで、新しいポイントがない
+  if (sub && P.total() - P.spent() <= 0) return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="text-7xl mb-4">✅</div>
+    <h2 class="text-xl font-bold mb-2">投票完了！</h2>
+    <p class="text-gray-400 text-sm mb-2">結果発表をお待ちください。</p>
+    <p class="text-xs text-green-600 mb-8">新しいブースを訪問すると、追加でポイントが投票できます。</p>
+    <button onclick="go('/scan')" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl mb-3 tap-card">もっとブースを回る 📷</button>
+    <button onclick="go('/home')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3 rounded-xl tap-card">ホームへ</button>
+  </div>`;
+
+  if (!s.voting_open) return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="text-7xl mb-4">🔒</div>
+    <h2 class="text-xl font-bold mb-2">投票は受け付けていません</h2>
+    <p class="text-gray-400 text-sm">主催者が投票を開始するまでお待ちください</p>
+  </div>`;
+
+  if (P.total() === 0) return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="text-7xl mb-4">📷</div>
+    <h2 class="text-xl font-bold mb-2">まずブースを訪問しましょう</h2>
+    <p class="text-gray-400 text-sm mb-8">QRコードをスキャンするとポイントがもらえます</p>
+    <button onclick="go('/scan')" class="bg-green-500 text-white px-10 py-3 rounded-xl font-bold tap-card">スキャンへ</button>
+  </div>`;
+
+  const draft  = cleanDraft();
+  const groups = groupBy(C.candidates);
+  const rem    = P.rem();
+
+  return `
+  <div class="page p-4">
+    <h2 class="text-lg font-bold mb-3">投票${sub ? ' <span class="text-sm font-normal text-green-500 ml-1">（追加）</span>' : ''}</h2>
+
+    ${sub ? `<div class="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-xs text-green-700">
+      🔄 前回の投票に追加されます。新たに獲得した <strong>${P.total() - P.spent()} pt</strong> を配分してください。
+    </div>` : ''}
+
+    <!-- Remaining points indicator -->
+    <div id="remCard" class="text-white rounded-2xl p-4 mb-3 flex items-center justify-between ${rem === 0 ? 'bg-blue-500' : 'bg-green-500'}">
+      <div>
+        <div class="text-xs text-white text-opacity-80">残り投票ポイント</div>
+        <div class="text-4xl font-bold leading-none mt-1" id="remDisp">${rem}</div>
+      </div>
+      <div class="text-right">
+        <div class="text-xs text-white text-opacity-80">合計ポイント</div>
+        <div class="font-bold">${P.total()} pt</div>
+      </div>
+    </div>
+
+    <div id="voteHint" class="text-xs mb-3 ${rem === 0 ? 'text-blue-500 font-bold' : 'text-gray-400'}">
+      ${rem === 0 ? '✅ 全ポイント配分済み！確定できます。' : `すべてのポイントを配分してから確定できます。あと ${rem} pt 残っています。`}
+    </div>
+
+    <div class="space-y-4 mb-6">
+      ${Object.entries(groups).map(([cat, items]) => `
+        <div>
+          <h3 class="text-xs font-bold text-gray-400 mb-2 px-1 uppercase tracking-wider">${esc(cat)}</h3>
+          <div class="space-y-2">
+            ${items.map(c => `
+              <div class="bg-white rounded-xl p-3 shadow-sm flex items-center gap-3">
+                <span class="text-2xl">${esc(c.emoji)}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium truncate">${esc(c.name)}</div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button onclick="chgVote('${c.id}',-1)"
+                    class="w-8 h-8 bg-gray-100 rounded-full font-bold text-gray-500 flex items-center justify-center text-lg leading-none tap-card">−</button>
+                  <span id="vc-${c.id}" class="w-7 text-center font-bold text-green-600">${draft[c.id] || 0}</span>
+                  <button onclick="chgVote('${c.id}',1)"
+                    class="w-8 h-8 bg-green-100 rounded-full font-bold text-green-600 flex items-center justify-center text-lg leading-none tap-card">＋</button>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <button id="submitBtn" onclick="confirmVote()"
+      class="w-full font-bold py-4 rounded-xl text-lg transition-colors ${rem === 0 ? 'bg-blue-500 hover:bg-blue-600 text-white tap-card' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+      ${rem === 0 ? '投票を確定する ✅' : `あと ${rem} pt 配分してください`}
+    </button>
+  </div>`;
+}
+
+function chgVote(id, delta) {
+  const draft = cleanDraft();
+  const cur   = draft[id] || 0;
+  if (delta > 0 && P.rem() <= 0) {
+    const el = document.getElementById('remDisp');
+    if (el) { el.classList.add('text-red-200'); setTimeout(() => el.classList.remove('text-red-200'), 400); }
+    return;
+  }
+  const newVal = Math.max(0, cur + delta);
+  draft[id] = newVal;
+  V.setDraft(draft);
+
+  const rem  = P.rem();
+  const done = rem === 0;
+
+  const vcEl = document.getElementById('vc-' + id);
+  if (vcEl) vcEl.textContent = newVal;
+
+  const remEl = document.getElementById('remDisp');
+  if (remEl) remEl.textContent = rem;
+
+  const card = document.getElementById('remCard');
+  if (card) card.className = card.className.replace(/bg-\w+-\d+/, done ? 'bg-blue-500' : 'bg-green-500');
+
+  const hint = document.getElementById('voteHint');
+  if (hint) {
+    hint.className = `text-xs mb-3 ${done ? 'text-blue-500 font-bold' : 'text-gray-400'}`;
+    hint.textContent = done
+      ? '✅ 全ポイント配分済み！確定できます。'
+      : `すべてのポイントを配分してから確定できます。あと ${rem} pt 残っています。`;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  if (btn) {
+    if (done) {
+      btn.className = 'w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-xl text-lg tap-card transition-colors';
+      btn.textContent = '投票を確定する ✅';
+    } else {
+      btn.className = 'w-full bg-gray-200 text-gray-400 cursor-not-allowed font-bold py-4 rounded-xl text-lg transition-colors';
+      btn.textContent = `あと ${rem} pt 配分してください`;
+    }
+  }
+}
+
+async function confirmVote() {
+  if (P.rem() > 0) return;
+  const draft = cleanDraft();
+  const lines = C.candidates
+    .filter(c => draft[c.id] > 0)
+    .map(c => `  ${c.emoji} ${c.name}：${draft[c.id]}票`)
+    .join('\n');
+  if (!lines) return;
+  if (!confirm(`以下の内容で投票を確定しますか？\n（確定後は変更できません）\n\n${lines}`)) return;
+
+  const btn = document.getElementById('submitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '送信中...'; }
+  try {
+    await API.submitVotes(V.vid(), draft);
+    V.setDraft({});
+  } catch (e) {
+    alert(errMsg(e));
+    if (e.message === 'points_mismatch') V.setDraft({});
+  }
+  C._pubAt = 0;
+  render();
+}
+
+// ============================================================
+// PAGE: RESULTS / INTERIM (Live visualization)
+// ============================================================
+function ranking(R) {
+  return [...R.candidates].sort((a, b) => b.pts - a.pts || b.sup - a.sup);
+}
+
+const MEDALS  = ['🥇','🥈','🥉'];
+const GOLD_BG = ['from-amber-400 to-yellow-300','from-gray-300 to-gray-200','from-orange-400 to-amber-300'];
+const TEXTCOL = ['text-amber-900','text-gray-600','text-orange-900'];
+
+function top3Html(R) {
+  const top3 = ranking(R).filter(c => c.pts > 0).slice(0, 3);
+  if (!top3.length) return `
+    <div class="bg-white rounded-2xl p-8 text-center text-gray-300 mb-3">
+      <div class="text-4xl mb-2">🗳️</div>
+      <p class="text-sm">まだ投票がありません</p>
+    </div>`;
+  const first = top3[0];
+  return `
+    <div class="bg-gradient-to-r ${GOLD_BG[0]} rounded-2xl p-5 mb-3 relative overflow-hidden shadow-md">
+      <div class="absolute -right-3 -top-3 text-7xl opacity-20 select-none">${esc(first.emoji)}</div>
+      <div class="flex items-center gap-3">
+        <span class="text-4xl">${MEDALS[0]}</span>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-lg ${TEXTCOL[0]} truncate">${esc(first.name)}</div>
+          <div class="text-xs ${TEXTCOL[0]} opacity-70">${esc(first.category)}</div>
+        </div>
+        <span class="text-3xl">${esc(first.emoji)}</span>
+      </div>
+      <div class="flex gap-4 mt-3">
+        <div class="bg-white bg-opacity-50 rounded-xl px-4 py-2 text-center flex-1">
+          <div class="text-2xl font-bold ${TEXTCOL[0]}">${first.pts}</div>
+          <div class="text-xs ${TEXTCOL[0]} opacity-70">ポイント</div>
+        </div>
+        <div class="bg-white bg-opacity-50 rounded-xl px-4 py-2 text-center flex-1">
+          <div class="text-2xl font-bold ${TEXTCOL[0]}">${first.sup}</div>
+          <div class="text-xs ${TEXTCOL[0]} opacity-70">応援人数</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      ${top3.slice(1).map((ex, i) => `
+      <div class="bg-gradient-to-br ${GOLD_BG[i+1]} rounded-2xl p-4 shadow-sm relative overflow-hidden">
+        <div class="absolute -right-2 -top-2 text-5xl opacity-20 select-none">${esc(ex.emoji)}</div>
+        <div class="text-2xl mb-1">${MEDALS[i+1]}</div>
+        <div class="font-bold text-sm ${TEXTCOL[i+1]} leading-tight truncate">${esc(ex.name)}</div>
+        <div class="mt-2 flex flex-col gap-1">
+          <div class="bg-white bg-opacity-50 rounded-lg px-2 py-1 flex justify-between items-center">
+            <span class="text-xs ${TEXTCOL[i+1]} opacity-70">ポイント</span>
+            <span class="font-bold ${TEXTCOL[i+1]}">${ex.pts}</span>
+          </div>
+          <div class="bg-white bg-opacity-50 rounded-lg px-2 py-1 flex justify-between items-center">
+            <span class="text-xs ${TEXTCOL[i+1]} opacity-70">応援人数</span>
+            <span class="font-bold ${TEXTCOL[i+1]}">${ex.sup}人</span>
+          </div>
+        </div>
+      </div>`).join('')}
+    </div>`;
+}
+
+function backHomeBtn() {
+  return `<button onclick="go('/home')" class="w-full bg-white border border-gray-200 text-gray-500 py-3 rounded-xl text-sm tap-card no-print">
+    ← ホームに戻る
+  </button>`;
+}
+
+function pageResults(R) {
+  return `<div class="page p-4" id="live-root">${resultsInner(R)}</div>`;
+}
+
+function resultsInner(R) {
+  const sorted   = ranking(R);
+  const totalPts = sorted.reduce((a, b) => a + b.pts, 0);
+  const maxSup   = Math.max(0, ...sorted.map(e => e.sup));
+
+  return `
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-bold">🏆 投票結果</h2>
+    <div class="flex items-center gap-1.5 text-xs text-gray-400">
+      <span class="live-dot w-2 h-2 bg-red-500 rounded-full inline-block"></span>
+      <span>LIVE</span>
+      <span id="live-time" class="tabular-nums">${fmtTime()}</span>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-3 gap-2 mb-3">
+    <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+      <div class="text-2xl font-bold text-green-600">${totalPts}</div>
+      <div class="text-xs text-gray-400 mt-0.5">総ポイント</div>
+    </div>
+    <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+      <div class="text-2xl font-bold text-purple-500">${R.voters}</div>
+      <div class="text-xs text-gray-400 mt-0.5">投票者数</div>
+    </div>
+    <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+      <div class="text-2xl font-bold text-blue-500">${maxSup}</div>
+      <div class="text-xs text-gray-400 mt-0.5">最多応援人数</div>
+    </div>
+  </div>
+
+  <div class="bg-emerald-500 text-white rounded-2xl p-4 mb-4 flex items-center gap-4">
+    <span class="text-4xl">🌱</span>
+    <div>
+      <div class="text-xs text-emerald-100 font-bold mb-0.5">みんなで達成したCO₂削減量</div>
+      <div class="text-3xl font-bold">${fmtCO2(R.co2)}</div>
+    </div>
+  </div>
+
+  <div class="mb-4">
+    <p class="text-xs font-bold text-gray-400 mb-2 px-1">▶ TOP 3</p>
+    ${top3Html(R)}
+  </div>
+
+  ${V.vid() ? backHomeBtn() : ''}`;
+}
+
+function pageInterim(R) {
+  return `<div class="page p-4" id="live-root">${interimInner(R)}</div>`;
+}
+
+function interimInner(R) {
+  return `
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-bold">🎉 中間発表</h2>
+    <div class="flex items-center gap-1.5 text-xs text-gray-400">
+      <span class="live-dot w-2 h-2 bg-blue-500 rounded-full inline-block"></span>
+      <span>LIVE</span>
+      <span id="live-time" class="tabular-nums">${fmtTime()}</span>
+    </div>
+  </div>
+
+  <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center text-sm text-blue-700 mb-4">
+    現在の上位3ブースを発表します！（暫定結果）
+  </div>
+
+  <div class="mb-4">${top3Html(R)}</div>
+
+  ${V.vid() ? backHomeBtn() : ''}`;
+}
+
+// 1秒ごとに時計、5秒ごとに集計を更新
+function startLive(path) {
+  every(1000, () => {
+    const el = document.getElementById('live-time');
+    if (el) el.textContent = fmtTime();
+  });
+  every(5000, async () => {
+    try {
+      await loadPublic(true);
+      const key = path === '/results' ? 'results_revealed' : 'interim_revealed';
+      if (currentPath() !== path) return;
+      if (!C.settings[key]) { render(); return; }
+      const R = await API.getResults(null);
+      const root = document.getElementById('live-root');
+      if (root && currentPath() === path) root.innerHTML = path === '/results' ? resultsInner(R) : interimInner(R);
+    } catch (e) { console.warn(e); }
+  });
+}
+
+// ============================================================
+// ADMIN
+// ============================================================
+const adminPw = () => sessionStorage.getItem('apw') || '';
+
+async function buildAdmin(path) {
+  if (path === '/admin') return pageAdminLogin();
+  if (!adminPw() || !(await API.adminLogin(adminPw()))) {
+    sessionStorage.removeItem('apw');
+    go('/admin'); return null;
+  }
+  await loadPublic(true);
+  if (path === '/admin/dash')       return pageAdminDash(await API.getResults(adminPw()));
+  if (path === '/admin/qr')         return pageAdminQR();
+  if (path === '/admin/booths')     return pageAdminBooths();
+  if (path === '/admin/candidates') return pageAdminCandidates();
+  return `<div class="p-8 text-center text-gray-400">ページが見つかりません</div>`;
+}
+
+// 管理操作を実行して再描画
+async function adminDo(fn) {
+  try {
+    await fn(adminPw());
+    C._pubAt = 0;
+    render();
+  } catch (e) {
+    alert(errMsg(e));
+    if (e.message === 'unauthorized') { sessionStorage.removeItem('apw'); go('/admin'); }
+  }
+}
+
+function pageAdminLogin() {
+  return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6">
+    <div class="text-5xl mb-4">🔧</div>
+    <h1 class="text-xl font-bold mb-6">主催者ログイン</h1>
+    <div class="w-full bg-white rounded-2xl shadow-sm p-6">
+      <input id="apw" type="password" placeholder="パスワード"
+        class="w-full border border-gray-200 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-gray-300"
+        onkeydown="if(event.key==='Enter')adminLogin()">
+      <button id="apwBtn" onclick="adminLogin()" class="w-full bg-gray-700 text-white font-bold py-3 rounded-xl tap-card">
+        ログイン
+      </button>
+      <p id="apwErr" class="text-red-400 text-xs text-center mt-2 hidden">パスワードが違います</p>
+    </div>
+    <button onclick="go('/')" class="mt-6 text-xs text-gray-300 underline">← 来場者トップへ</button>
+    ${DEMO ? `<p class="mt-4 text-xs text-gray-300">（デモの初期パスワード: admin1234）</p>` : ''}
+  </div>`;
+}
+
+async function adminLogin() {
+  const pw  = document.getElementById('apw').value;
+  const btn = document.getElementById('apwBtn');
+  btn.disabled = true;
+  try {
+    if (await API.adminLogin(pw)) { sessionStorage.setItem('apw', pw); go('/admin/dash'); return; }
+    document.getElementById('apwErr').classList.remove('hidden');
+  } catch (e) {
+    alert(errMsg(e));
+  }
+  btn.disabled = false;
+}
+
+function pageAdminDash(R) {
+  const s = C.settings;
+  const sorted = ranking(R);
+  const totalVotes = sorted.reduce((a, b) => a + b.pts, 0);
+  const maxPts = Math.max(1, ...sorted.map(c => c.pts));
+
+  return `
+  <div class="page p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-lg font-bold">🔧 管理画面</h2>
+      <button onclick="go('/')" class="text-xs text-gray-400 underline">← 来場者画面へ</button>
+    </div>
+    <p class="text-xs mb-4 ${DEMO ? 'text-amber-600' : 'text-green-600'}">
+      ${DEMO ? '● デモモード（このブラウザ内のみ）' : '● Supabaseに接続中'}
+    </p>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-3 gap-2 mb-2">
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-2xl font-bold text-green-500">${R.visitors}</div>
+        <div class="text-xs text-gray-400 mt-1">来場者登録</div>
+      </div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-2xl font-bold text-purple-500">${R.voters}</div>
+        <div class="text-xs text-gray-400 mt-1">投票者数</div>
+      </div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-2xl font-bold text-blue-500">${totalVotes}</div>
+        <div class="text-xs text-gray-400 mt-1">総票数</div>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-4">
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-xl font-bold text-gray-600">${R.scans}</div>
+        <div class="text-xs text-gray-400 mt-1">総スキャン数</div>
+      </div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
+        <div class="text-xl font-bold text-emerald-600">${fmtCO2(R.co2)}</div>
+        <div class="text-xs text-gray-400 mt-1">CO₂削減合計</div>
+      </div>
+    </div>
+
+    <!-- Voting control -->
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-700 mb-3">投票コントロール</h3>
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <button onclick="adminDo(pw => API.adminUpdateSettings(pw, { voting_open:true }))"
+          class="${s.voting_open ? 'bg-green-500 text-white ring-2 ring-green-300' : 'bg-gray-100 text-gray-500'} py-2.5 rounded-xl text-sm font-bold tap-card">
+          ✅ 投票を開始
+        </button>
+        <button onclick="adminDo(pw => API.adminUpdateSettings(pw, { voting_open:false }))"
+          class="${!s.voting_open ? 'bg-red-400 text-white ring-2 ring-red-200' : 'bg-gray-100 text-gray-500'} py-2.5 rounded-xl text-sm font-bold tap-card">
+          🔒 投票を停止
+        </button>
+      </div>
+      <button onclick="adminDo(pw => API.adminUpdateSettings(pw, { interim_revealed:${!s.interim_revealed} }))"
+        class="${s.interim_revealed ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'} w-full py-2.5 rounded-xl text-sm font-bold tap-card mb-2">
+        ${s.interim_revealed ? '🎉 中間発表公開中（タップで非公開に）' : '🎉 中間発表を公開する'}
+      </button>
+      <button onclick="adminDo(pw => API.adminUpdateSettings(pw, { results_revealed:${!s.results_revealed} }))"
+        class="${s.results_revealed ? 'bg-amber-400 text-amber-900' : 'bg-gray-100 text-gray-500'} w-full py-2.5 rounded-xl text-sm font-bold tap-card">
+        ${s.results_revealed ? '🏆 結果公開中（タップで非公開に）' : '🏆 最終結果を公開する'}
+      </button>
+    </div>
+
+    <!-- Ranking (admin only) -->
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-gray-700">現在の得票（主催者のみ）</h3>
+        <button onclick="render()" class="text-xs text-gray-400 underline">更新</button>
+      </div>
+      ${sorted.map((c, i) => `
+        <div class="py-2 border-b border-gray-50 last:border-0">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="w-5 text-right text-gray-400 text-xs">${i + 1}</span>
+            <span>${esc(c.emoji)}</span>
+            <span class="flex-1 min-w-0 truncate">${esc(c.name)}</span>
+            <span class="font-bold text-green-600">${c.pts}pt</span>
+            <span class="text-xs text-blue-500 w-10 text-right">${c.sup}人</span>
+          </div>
+          <div class="ml-7 mt-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+            <div class="bg-green-400 h-1.5 rounded-full" style="width:${Math.round(c.pts / maxPts * 100)}%"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Settings -->
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-700 mb-3">イベント設定</h3>
+      <label class="text-xs text-gray-400">イベント名</label>
+      <input id="evName" type="text" value="${esc(s.event_name)}"
+        class="w-full border border-gray-100 rounded-lg px-3 py-2 text-sm mb-3 mt-1 focus:outline-none focus:ring-2 focus:ring-gray-200">
+      <label class="text-xs text-gray-400">管理者パスワード（変更する場合のみ）</label>
+      <input id="evPw" type="password" placeholder="新しいパスワード"
+        class="w-full border border-gray-100 rounded-lg px-3 py-2 text-sm mb-3 mt-1 focus:outline-none focus:ring-2 focus:ring-gray-200">
+      <button onclick="saveAdminSettings()" class="w-full bg-gray-700 text-white py-2 rounded-xl text-sm font-bold tap-card">保存</button>
+    </div>
+
+    <!-- Navigation -->
+    <div class="space-y-2 mb-6">
+      <button onclick="go('/admin/booths')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl tap-card">
+        🏪 訪問ブースを管理
+      </button>
+      <button onclick="go('/admin/qr')" class="w-full bg-green-100 text-green-700 font-bold py-3.5 rounded-xl tap-card">
+        📷 QRコードを生成・印刷
+      </button>
+      <button onclick="go('/admin/candidates')" class="w-full bg-purple-500 text-white font-bold py-3.5 rounded-xl tap-card">
+        🗳️ 投票対象を管理
+      </button>
+      <button onclick="go('/interim')" class="w-full bg-blue-50 text-blue-600 font-bold py-3 rounded-xl tap-card text-sm">
+        🎉 中間発表ページを開く
+      </button>
+      <button onclick="go('/results')" class="w-full bg-amber-50 text-amber-700 font-bold py-3 rounded-xl tap-card text-sm">
+        🏆 結果ページを開く
+      </button>
+    </div>
+
+    <!-- Danger zone -->
+    <div class="border border-red-100 rounded-2xl p-4">
+      <h3 class="font-bold text-red-400 text-sm mb-1">リハーサルデータの消去</h3>
+      <p class="text-xs text-gray-400 mb-3">来場者・スキャン・投票をすべて削除します（ブースと投票対象は残ります）。元に戻せません。</p>
+      <button onclick="resetAll()" class="w-full border border-red-300 text-red-500 py-2 rounded-xl text-sm font-bold tap-card">
+        🧹 来場者データを全消去
+      </button>
+    </div>
+  </div>`;
+}
+
+function saveAdminSettings() {
+  const name = document.getElementById('evName').value.trim();
+  const pw   = document.getElementById('evPw').value;
+  adminDo(async cur => {
+    await API.adminUpdateSettings(cur, { event_name:name, new_pw:pw });
+    if (pw) sessionStorage.setItem('apw', pw);
+    alert('保存しました ✅');
+  });
+}
+
+function resetAll() {
+  if (!confirm('来場者・スキャン・投票をすべて削除します。よろしいですか？')) return;
+  if (prompt('確認のため「消去」と入力してください') !== '消去') return;
+  adminDo(pw => API.adminResetAll(pw));
+}
+
+// ============================================================
+// ADMIN: QR CODE PAGE
+// ============================================================
+function qrBaseUrl() { return location.href.split('#')[0]; }
+
+function pageAdminQR() {
+  const exs = C.exhibitors;
+  const isLocal = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  return `
+  <div class="page p-4">
+    <div class="flex items-center gap-2 mb-3 no-print">
+      <button onclick="go('/admin/dash')" class="text-gray-400 text-lg">←</button>
+      <h2 class="text-lg font-bold">QRコード一覧</h2>
+      <button onclick="window.print()" class="ml-auto bg-gray-700 text-white text-xs px-4 py-2 rounded-lg tap-card">
+        🖨️ 印刷
+      </button>
+    </div>
+    <p class="text-xs text-gray-400 mb-2 no-print">各ブースに印刷して設置してください。スキャンすると来場者にポイントが付与されます。</p>
+    <p class="text-xs text-gray-400 mb-4 no-print break-all">QRの行き先：${esc(qrBaseUrl())}#/scan/…</p>
+    ${isLocal || DEMO ? `
+    <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-600 no-print">
+      ⚠️ ${DEMO ? 'デモモードのQRです。' : ''}${isLocal ? 'このPC内のアドレスなので、来場者のスマホからは開けません。' : ''}
+      本番用のQRは、公開URLで開いた管理画面（Supabase接続済み）から印刷してください。
+    </div>` : ''}
+
+    <div class="grid grid-cols-2 gap-3" id="qr-grid">
+      ${exs.map(ex => `
+      <div class="qr-card bg-white rounded-2xl p-3 shadow-sm text-center border border-gray-100">
+        <div class="text-2xl mb-1">${esc(ex.emoji)}</div>
+        <div class="font-bold text-sm leading-tight mb-0.5">${esc(ex.name)}</div>
+        <div class="text-xs text-gray-400 mb-1">${esc(ex.category)}</div>
+        ${ex.co2 ? `<div class="text-xs text-emerald-600 font-bold mb-2">🌱 CO₂削減 ${fmtCO2(ex.co2)}</div>` : ''}
+        <div id="qr-${ex.id}" class="flex justify-center items-center min-h-[100px]">
+          <div class="text-gray-200 text-xs">生成中...</div>
+        </div>
+        <div class="text-gray-200 text-xs mt-1">${esc(ex.id)}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function genQRCodes() {
+  const baseUrl = qrBaseUrl();
+  C.exhibitors.forEach(ex => {
+    const el = document.getElementById('qr-' + ex.id);
+    if (!el) return;
+    el.innerHTML = '';
+    new QRCode(el, {
+      text:         baseUrl + '#/scan/' + ex.id,
+      width:        110,
+      height:       110,
+      colorDark:    '#166534',
+      colorLight:   '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  });
+}
+
+// ============================================================
+// ADMIN: BOOTHS MANAGEMENT
+// ============================================================
+function pageAdminBooths() {
+  const booths = C.exhibitors;
+  const EMOJIS = ['☕','🍱','🥤','🧁','🌸','🪵','💍','🕯️','🖼️','🎨','🧘','📸','⚽','🌿','💆','🌱','🎵','🐾','♻️','🥦','🏆','🌟','🎯','🍀'];
+
+  return `
+  <div class="page p-4">
+    <div class="flex items-center gap-2 mb-4">
+      <button onclick="go('/admin/dash')" class="text-gray-400 text-lg">←</button>
+      <h2 class="text-lg font-bold">🏪 訪問ブースの管理</h2>
+    </div>
+    <p class="text-xs text-gray-400 mb-4">QRコードのスキャン対象となるブース一覧です。来場者はここに登録されたブースを訪問してポイントを獲得します。</p>
+
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">現在のブース一覧 (${booths.length}件)</h3>
+      ${booths.length === 0
+        ? '<p class="text-center text-gray-300 text-sm py-4">まだ登録されていません</p>'
+        : booths.map(b => `
+        <div class="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+          <span class="text-xl">${esc(b.emoji)}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">${esc(b.name)}</div>
+            <div class="text-xs text-gray-400">${esc(b.category)}${b.co2 ? ` · 🌱 ${fmtCO2(b.co2)}` : ''}</div>
+          </div>
+          <button onclick="removeBooth('${b.id}')"
+            class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card shrink-0">削除</button>
+        </div>`).join('')}
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">新しいブースを追加</h3>
+      <div class="mb-2">
+        <label class="text-xs text-gray-400">ブース名</label>
+        <input id="bName" type="text" placeholder="例：グリーンカフェ"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
+      </div>
+      <div class="mb-2">
+        <label class="text-xs text-gray-400">カテゴリ</label>
+        <input id="bCat" type="text" placeholder="例：フード・ドリンク"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
+      </div>
+      <div class="mb-2">
+        <label class="text-xs text-gray-400">CO₂削減量（kg）</label>
+        <input id="bCO2" type="number" step="0.1" min="0" placeholder="例：0.5"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
+      </div>
+      <div class="mb-3">
+        <label class="text-xs text-gray-400">絵文字</label>
+        <div class="flex flex-wrap gap-2 mt-1">
+          ${EMOJIS.map(e => `<button onclick="selectEmoji('bEmoji','booth-emoji-btn','${e}')" class="booth-emoji-btn text-xl w-9 h-9 rounded-lg border border-gray-100 hover:bg-green-50 tap-card">${e}</button>`).join('')}
+        </div>
+        <input id="bEmoji" type="text" value="🏪" placeholder="絵文字"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-green-200">
+      </div>
+      <button onclick="addBooth()" class="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl tap-card">
+        ＋ 追加する
+      </button>
+    </div>
+
+    <button onclick="go('/admin/qr')" class="w-full bg-green-100 text-green-700 font-bold py-3 rounded-xl tap-card mb-2">
+      📷 QRコードを生成・印刷
+    </button>
+  </div>`;
+}
+
+function selectEmoji(inputId, btnClass, e) {
+  document.getElementById(inputId).value = e;
+  document.querySelectorAll('.' + btnClass).forEach(btn => {
+    btn.classList.toggle('bg-gray-100', btn.textContent === e);
+    btn.classList.toggle('border-gray-400', btn.textContent === e);
+  });
+}
+
+function addBooth() {
+  const name  = document.getElementById('bName').value.trim();
+  const cat   = document.getElementById('bCat').value.trim();
+  const emoji = document.getElementById('bEmoji').value.trim() || '🏪';
+  const co2   = parseFloat(document.getElementById('bCO2').value) || 0;
+  if (!name) { document.getElementById('bName').classList.add('ring-2','ring-red-300'); return; }
+  adminDo(pw => API.adminUpsertExhibitor(pw, { id:'ex' + Date.now(), name, category:cat || 'その他', emoji, co2 }));
+}
+
+function removeBooth(id) {
+  if (!confirm('このブースを削除しますか？\n（このブースのQRコードはスキャンできなくなり、来場者がこのブースで得たポイントも消えます）')) return;
+  adminDo(pw => API.adminDeleteExhibitor(pw, id));
+}
+
+// ============================================================
+// ADMIN: CANDIDATES MANAGEMENT
+// ============================================================
+function pageAdminCandidates() {
+  const cands  = C.candidates;
+  const EMOJIS = ['🏆','🌟','🎯','🎨','🍀','🌸','🎵','🌿','☕','🧁','🪵','💍','🕯️','🖼️','🧘','📸','⚽','💆','🌱','🐾','♻️','🥦','🥤','🍱'];
+
+  return `
+  <div class="page p-4">
+    <div class="flex items-center gap-2 mb-4">
+      <button onclick="go('/admin/dash')" class="text-gray-400 text-lg">←</button>
+      <h2 class="text-lg font-bold">🗳️ 投票対象の管理</h2>
+    </div>
+    <p class="text-xs text-gray-400 mb-4">ここで登録した項目が投票ページに表示されます。訪問ブースとは独立しています。</p>
+
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">現在の投票対象 (${cands.length}件)</h3>
+      ${cands.length === 0
+        ? '<p class="text-center text-gray-300 text-sm py-4">まだ登録されていません</p>'
+        : cands.map(c => `
+        <div class="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+          <span class="text-xl">${esc(c.emoji)}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">${esc(c.name)}</div>
+            <div class="text-xs text-gray-400">${esc(c.category)}</div>
+          </div>
+          <button onclick="removeCandidate('${c.id}')"
+            class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card shrink-0">削除</button>
+        </div>`).join('')}
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <h3 class="font-bold text-gray-600 text-sm mb-3">新しい投票対象を追加</h3>
+      <div class="mb-2">
+        <label class="text-xs text-gray-400">名前</label>
+        <input id="cName" type="text" placeholder="例：グリーンカフェ"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-purple-200">
+      </div>
+      <div class="mb-2">
+        <label class="text-xs text-gray-400">カテゴリ</label>
+        <input id="cCat" type="text" placeholder="例：フード・ドリンク"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-purple-200">
+      </div>
+      <div class="mb-3">
+        <label class="text-xs text-gray-400">絵文字</label>
+        <div class="flex flex-wrap gap-2 mt-1">
+          ${EMOJIS.map(e => `<button onclick="selectEmoji('cEmoji','emoji-btn','${e}')" class="emoji-btn text-xl w-9 h-9 rounded-lg border border-gray-100 hover:bg-purple-50 tap-card">${e}</button>`).join('')}
+        </div>
+        <input id="cEmoji" type="text" value="🏆" placeholder="絵文字"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-purple-200">
+      </div>
+      <button onclick="addCandidate()" class="w-full bg-purple-500 text-white font-bold py-2.5 rounded-xl tap-card">
+        ＋ 追加する
+      </button>
+    </div>
+  </div>`;
+}
+
+function addCandidate() {
+  const name  = document.getElementById('cName').value.trim();
+  const cat   = document.getElementById('cCat').value.trim();
+  const emoji = document.getElementById('cEmoji').value.trim() || '🏆';
+  if (!name) { document.getElementById('cName').classList.add('ring-2','ring-red-300'); return; }
+  adminDo(pw => API.adminUpsertCandidate(pw, { id:'ca' + Date.now(), name, category:cat || 'その他', emoji }));
+}
+
+function removeCandidate(id) {
+  if (!confirm('この投票対象を削除しますか？\n（この対象に入った票も消えます）')) return;
+  adminDo(pw => API.adminDeleteCandidate(pw, id));
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+render();
+</script>
+</body>
+</html>
