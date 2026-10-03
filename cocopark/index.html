@@ -113,6 +113,7 @@ const DemoDB = {
 };
 
 const DemoAPI = {
+  async getSettings() { return DemoDB.load().settings; },
   async getPublic() {
     const d = DemoDB.load();
     return { settings:d.settings, exhibitors:d.exhibitors, candidates:d.candidates };
@@ -227,6 +228,11 @@ async function rpc(fn, args) {
 }
 
 const RemoteAPI = {
+  async getSettings() {
+    const { data, error } = await sb.from('settings').select('*').eq('id', 1).single();
+    if (error) throw new Error(error.message);
+    return data;
+  },
   async getPublic() {
     const [s, e, c] = await Promise.all([
       sb.from('settings').select('*').eq('id', 1).single(),
@@ -276,10 +282,16 @@ const sum = (obj) => Object.values(obj).reduce((a, b) => a + b, 0);
 // サーバーから取得したデータのキャッシュ
 const C = { settings:{}, exhibitors:[], candidates:[], me:{ scans:[], votes:{} }, _pubAt:0 };
 
+// 設定・ブース一覧・投票対象をまとめて取得（一覧は当日ほぼ変わらないので60秒キャッシュ）
 async function loadPublic(force) {
-  if (!force && Date.now() - C._pubAt < 10000) return;
+  if (!force && Date.now() - C._pubAt < 60000) return;
   Object.assign(C, await API.getPublic());
   C._pubAt = Date.now();
+}
+
+// 投票開始・公開状態など、変わりうる設定だけを取得（自動更新はこちらを使う）
+async function loadSettings() {
+  C.settings = await API.getSettings();
 }
 
 // この端末の来場者情報（IDとニックネーム、未確定の配分）
@@ -400,21 +412,25 @@ async function buildPage(path) {
   if (path.startsWith('/admin')) return buildAdmin(path);
 
   if (path === '/results' || path === '/interim') {
-    await loadPublic(true);
+    await loadSettings();   // 集計結果に名前も含まれるので一覧は不要
     const key = path === '/results' ? 'results_revealed' : 'interim_revealed';
     if (!C.settings[key]) return pageLocked(path === '/results' ? '結果はまだ公開されていません' : '中間発表はまだ公開されていません');
     const R = await API.getResults(null);
     return path === '/results' ? pageResults(R) : pageInterim(R);
   }
 
-  await loadPublic(path === '/home' || path === '/vote' || path.startsWith('/scan/'));
+  const fresh = Date.now() - C._pubAt < 60000;
+  await loadPublic();
+  // 一覧をキャッシュから使った場合でも、投票受付などの設定は最新にする
+  if (fresh && (path === '/home' || path === '/vote')) await loadSettings();
   if (!(await ensureMe())) return null;
 
   if (path === '/home') return pageHome();
   if (path === '/scan') return pageScanList();
   if (path.startsWith('/scan/')) {
     const id = decodeURIComponent(path.split('/')[2] || '');
-    const ex = C.exhibitors.find(e => e.id === id);
+    let ex = C.exhibitors.find(e => e.id === id);
+    if (!ex) { await loadPublic(true); ex = C.exhibitors.find(e => e.id === id); }   // 直前に追加されたブースかもしれない
     if (!ex) return pageScanInvalid();
     const isNew = await API.addScan(V.vid(), id);
     if (isNew) C.me.scans.push(id);
@@ -430,7 +446,7 @@ function afterRender(path) {
     // 投票開始・結果公開を検知してボタンを出す
     every(20000, async () => {
       const before = JSON.stringify(C.settings);
-      try { await loadPublic(true); } catch { return; }
+      try { await loadSettings(); } catch { return; }
       if (currentPath() === '/home' && JSON.stringify(C.settings) !== before) render();
     });
   }
@@ -1059,7 +1075,6 @@ async function confirmVote() {
     alert(errMsg(e));
     if (e.message === 'points_mismatch') V.setDraft({});
   }
-  C._pubAt = 0;
   render();
 }
 
@@ -1213,7 +1228,7 @@ function startLive(path) {
   });
   every(5000, async () => {
     try {
-      await loadPublic(true);
+      await loadSettings();
       const key = path === '/results' ? 'results_revealed' : 'interim_revealed';
       if (currentPath() !== path) return;
       if (!C.settings[key]) { render(); return; }
