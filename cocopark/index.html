@@ -492,6 +492,7 @@ function pageWelcome() {
         はじめる 🎉
       </button>
       ${localStorage.getItem('pendingScan') ? `<p class="text-xs text-green-600 mt-3 text-center">登録が終わると、読み取ったブースのスタンプが押されます</p>` : ''}
+      <p class="text-xs text-gray-400 mt-4 text-center">※ ログデータは分析に利用することがあります</p>
     </div>
 
     ${DEMO ? `<p class="mt-6 text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-full">デモモード（このブラウザ内だけで動作中）</p>` : ''}
