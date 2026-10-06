@@ -22,10 +22,24 @@
     #qr-reader { background: #111827; }
     #qr-reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
     .spinner { width: 28px; height: 28px; border: 3px solid #d1fae5; border-top-color: #22c55e; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .qr-small img, .qr-small canvas { width: 110px !important; height: 110px !important; }
+    .a4-qr img, .a4-qr canvas { width: 115mm !important; height: 115mm !important; }
+    .a4-sheets { display: none; }
     @media print {
       #bottom-nav, .no-print { display: none !important; }
       .qr-card { break-inside: avoid; }
       body { background: white !important; }
+      /* A4に1ブースずつ */
+      @page { size: A4 portrait; margin: 10mm; }
+      body.print-a4 #app { max-width: none; padding: 0; }
+      body.print-a4 #app .page { padding: 0; animation: none; }
+      body.print-a4 #app .page > *:not(.a4-sheets) { display: none !important; }
+      body.print-a4 .a4-sheets { display: block; }
+      .a4-sheet { height: 276mm; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+                  text-align: center; break-after: page; page-break-after: always; overflow: hidden; }
+      .a4-sheet.last { break-after: auto; page-break-after: auto; }
+      .a4-sheet.skip { display: none !important; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>
@@ -1474,11 +1488,16 @@ function pageAdminQR() {
     <div class="flex items-center gap-2 mb-3 no-print">
       <button onclick="go('/admin/dash')" class="text-gray-400 text-lg">←</button>
       <h2 class="text-lg font-bold">QRコード一覧</h2>
-      <button onclick="window.print()" class="ml-auto bg-gray-700 text-white text-xs px-4 py-2 rounded-lg tap-card">
-        🖨️ 印刷
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-3 no-print">
+      <button onclick="printQR('a4')" class="bg-green-600 text-white text-sm font-bold py-3 rounded-xl tap-card">
+        🖨️ A4に1枚ずつ印刷<br><span class="text-xs font-normal">（全${exs.length}枚）</span>
+      </button>
+      <button onclick="printQR('list')" class="bg-gray-700 text-white text-sm font-bold py-3 rounded-xl tap-card">
+        🖨️ 一覧で印刷<br><span class="text-xs font-normal">（確認・控え用）</span>
       </button>
     </div>
-    <p class="text-xs text-gray-400 mb-2 no-print">各ブースに印刷して設置してください。スキャンすると来場者にポイントが付与されます。</p>
+    <p class="text-xs text-gray-400 mb-2 no-print">各ブースに印刷して設置してください。1ブースだけ刷り直すときは、各カードの「A4印刷」を押してください。</p>
     <p class="text-xs text-gray-400 mb-4 no-print break-all">QRの行き先：${esc(qrBaseUrl())}#/scan/…</p>
     ${isLocal || DEMO ? `
     <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-600 no-print">
@@ -1494,10 +1513,40 @@ function pageAdminQR() {
         <div class="text-xs text-gray-400 mb-1">${esc(ex.category)}</div>
         ${ex.action ? `<div class="text-xs text-emerald-700 mb-0.5">${esc(ex.action)}</div>` : ''}
         ${ex.co2 ? `<div class="text-xs text-emerald-600 font-bold mb-2">🌱 CO₂削減 ${fmtCO2(ex.co2)}</div>` : ''}
-        <div id="qr-${ex.id}" class="flex justify-center items-center min-h-[100px]">
+        <div id="qr-${ex.id}" class="qr-small flex justify-center items-center min-h-[100px]">
           <div class="text-gray-200 text-xs">生成中...</div>
         </div>
-        <div class="text-gray-200 text-xs mt-1">${esc(ex.id)}</div>
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <span class="text-gray-300 text-xs">${esc(ex.id)}</span>
+          <button onclick="printQR('a4','${ex.id}')" class="no-print text-xs text-green-700 border border-green-200 rounded px-2 py-0.5 tap-card">A4印刷</button>
+        </div>
+      </div>`).join('')}
+    </div>
+
+    <!-- 印刷用：A4に1ブースずつ（画面には表示しない） -->
+    <div class="a4-sheets">
+      ${exs.map(ex => `
+      <div class="a4-sheet" data-id="${ex.id}">
+        <div style="width:100%">
+          <img src="${LOGO_SRC}" alt="" style="height:16mm; margin:0 auto" onerror="this.style.display='none'">
+          <div style="font-size:15pt; font-weight:bold; color:#0f766e; margin-top:3mm">${APP_TITLE}</div>
+        </div>
+        <div>
+          <div style="font-size:40pt; line-height:1.1">${esc(ex.emoji)}</div>
+          <div style="font-size:34pt; font-weight:bold; line-height:1.2; margin-top:2mm">${esc(ex.name)}</div>
+          <div style="font-size:14pt; color:#6b7280; margin-top:1mm">${esc(ex.category)}</div>
+        </div>
+        <div id="a4qr-${ex.id}" class="a4-qr" style="display:flex; justify-content:center"></div>
+        ${ex.action || ex.co2 ? `
+        <div style="width:150mm; border:1.5pt solid #6ee7b7; background:#ecfdf5; border-radius:5mm; padding:4mm 6mm">
+          ${ex.action ? `<div style="font-size:12pt; color:#059669; font-weight:bold">🌱 このブースの脱炭素アクション</div>
+          <div style="font-size:22pt; color:#047857; font-weight:bold; margin-top:1mm">${esc(ex.action)}</div>` : ''}
+          ${ex.co2 ? `<div style="font-size:14pt; color:#059669; margin-top:2mm">CO₂削減量 <b style="font-size:20pt">${fmtCO2(ex.co2)}</b></div>` : ''}
+        </div>` : '<div></div>'}
+        <div>
+          <div style="font-size:16pt; font-weight:bold; color:#374151">📷 アプリの「スキャン」でQRコードを読み取ってスタンプをゲット！</div>
+          <div style="font-size:9pt; color:#9ca3af; margin-top:1mm">${esc(ex.id)}</div>
+        </div>
       </div>`).join('')}
     </div>
   </div>`;
@@ -1506,19 +1555,36 @@ function pageAdminQR() {
 function genQRCodes() {
   const baseUrl = qrBaseUrl();
   C.exhibitors.forEach(ex => {
-    const el = document.getElementById('qr-' + ex.id);
-    if (!el) return;
-    el.innerHTML = '';
-    new QRCode(el, {
-      text:         baseUrl + '#/scan/' + ex.id,
-      width:        110,
-      height:       110,
-      colorDark:    '#166534',
-      colorLight:   '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M,
-    });
+    // 画面用（小）と A4 用（大）。どちらも高解像度で作り、CSS で縮小表示する
+    for (const [elId, size] of [['qr-' + ex.id, 512], ['a4qr-' + ex.id, 1024]]) {
+      const el = document.getElementById(elId);
+      if (!el) continue;
+      el.innerHTML = '';
+      new QRCode(el, {
+        text:         baseUrl + '#/scan/' + ex.id,
+        width:        size,
+        height:       size,
+        colorDark:    '#166534',
+        colorLight:   '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    }
   });
 }
+
+// mode: 'a4'（1ブース1枚。onlyId を指定するとそのブースだけ）または 'list'（一覧）
+function printQR(mode, onlyId) {
+  const sheets = [...document.querySelectorAll('.a4-sheet')];
+  sheets.forEach(s => {
+    s.classList.toggle('skip', !!onlyId && s.dataset.id !== onlyId);
+    s.classList.remove('last');
+  });
+  const visible = sheets.filter(s => !s.classList.contains('skip'));
+  if (visible.length) visible[visible.length - 1].classList.add('last');
+  document.body.classList.toggle('print-a4', mode === 'a4');
+  window.print();
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('print-a4'));
 
 // ============================================================
 // ADMIN: BOOTHS MANAGEMENT
