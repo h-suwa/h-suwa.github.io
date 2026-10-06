@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>スタンプラリー＆投票</title>
+  <title>脱炭素スタンプラリー＆応援投票</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -56,37 +56,38 @@ const DEMO = !(SUPABASE_URL && SUPABASE_ANON_KEY);
 // INITIAL DATA（デモモード用。Supabase では supabase/schema.sql の初期データを使用）
 // ============================================================
 const DEFAULT_EXHIBITORS = [
-  { id:'ex01', name:'グリーンカフェ',       category:'フード・ドリンク',     emoji:'☕',  co2:0.3 },
-  { id:'ex02', name:'ナチュラルキッチン',   category:'フード・ドリンク',     emoji:'🍱',  co2:0.4 },
-  { id:'ex03', name:'パークスムージー',     category:'フード・ドリンク',     emoji:'🥤',  co2:0.3 },
-  { id:'ex04', name:'焼き菓子のお店',       category:'フード・ドリンク',     emoji:'🧁',  co2:0.2 },
-  { id:'ex05', name:'フラワーショップ花',   category:'クラフト・雑貨',       emoji:'🌸',  co2:0.5 },
-  { id:'ex06', name:'ウッドクラフト工房',   category:'クラフト・雑貨',       emoji:'🪵',  co2:0.8 },
-  { id:'ex07', name:'ハンドメイドアクセサリー', category:'クラフト・雑貨',   emoji:'💍',  co2:0.6 },
-  { id:'ex08', name:'キャンドル工房',       category:'クラフト・雑貨',       emoji:'🕯️', co2:0.4 },
-  { id:'ex09', name:'アートギャラリー',     category:'クラフト・雑貨',       emoji:'🖼️', co2:0.3 },
-  { id:'ex10', name:'キッズアトリエ',       category:'体験・アクティビティ', emoji:'🎨',  co2:0.7 },
-  { id:'ex11', name:'ヨガスタジオ',         category:'体験・アクティビティ', emoji:'🧘',  co2:1.0 },
-  { id:'ex12', name:'フォトスポット',       category:'体験・アクティビティ', emoji:'📸',  co2:0.2 },
-  { id:'ex13', name:'スポーツ体験コーナー', category:'体験・アクティビティ', emoji:'⚽',  co2:0.8 },
-  { id:'ex14', name:'アロマテラピー',       category:'ウェルネス',           emoji:'🌿',  co2:0.6 },
-  { id:'ex15', name:'マッサージコーナー',   category:'ウェルネス',           emoji:'💆',  co2:0.5 },
-  { id:'ex16', name:'ハーブガーデン',       category:'ウェルネス',           emoji:'🌱',  co2:1.2 },
-  { id:'ex17', name:'ミュージックステージ', category:'エンタメ',             emoji:'🎵',  co2:0.4 },
-  { id:'ex18', name:'ペット写真館',         category:'エンタメ',             emoji:'🐾',  co2:0.3 },
-  { id:'ex19', name:'エコショップ',         category:'サステナブル',         emoji:'♻️', co2:2.0 },
-  { id:'ex20', name:'ベジタブルマーケット', category:'フード・ドリンク',     emoji:'🥦',  co2:1.0 },
+  { id:'ex01', name:'事務局', category:'事務局ゾーン', emoji:'🏕️', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex02', name:'近江麦酒＆京都風緑', category:'事務局ゾーン', emoji:'🍺', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex03', name:'龍谷大学', category:'循環・エコゾーン', emoji:'🎓', co2:0, action:'環境について学ぶ' },
+  { id:'ex04', name:'コミュニティバンク京信', category:'循環・エコゾーン', emoji:'👕', co2:0.8, action:'衣服等をリサイクルする' },
+  { id:'ex05', name:'京エコロジーセンター', category:'循環・エコゾーン', emoji:'🌱', co2:0.1, action:'生ごみをコンポストで堆肥化する' },
+  { id:'ex06', name:'京都奏和高校①', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex07', name:'京都奏和高校②', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex08', name:'京都奏和高校③', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex09', name:'京都奏和高校④', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex10', name:'京都奏和高校⑤', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex11', name:'京都奏和高校⑥', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex12', name:'京都奏和高校⑦', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex13', name:'京都奏和高校⑧', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex14', name:'京都奏和高校⑨', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex15', name:'京都奏和高校⑩', category:'奏和ゾーン', emoji:'🏫', co2:0.2, action:'週末を地元で過ごす' },
+  { id:'ex16', name:'NPOハピネス', category:'飲食ゾーン', emoji:'🍛', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex17', name:'こむすび', category:'飲食ゾーン', emoji:'🍙', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex18', name:'進々堂', category:'飲食ゾーン', emoji:'🥐', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex19', name:'さとやまワクワク研究所', category:'飲食ゾーン', emoji:'🌳', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex20', name:'メソポタミアケバブハウス', category:'飲食ゾーン', emoji:'🥙', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex21', name:'モルック体験', category:'芝生ゾーン', emoji:'🎯', co2:0.5, action:'地元産の食品を買う' },
+  { id:'ex22', name:'竹チップ舗装', category:'公園のひみつ', emoji:'🎋', co2:0, action:'環境について学ぶ' },
+  { id:'ex23', name:'雨庭', category:'公園のひみつ', emoji:'🌧️', co2:0, action:'環境について学ぶ' },
 ];
 
 const DEFAULT_CANDIDATES = [
-  { id:'ca01', name:'グリーンカフェ',       category:'フード・ドリンク', emoji:'☕' },
-  { id:'ca02', name:'フラワーショップ花',   category:'クラフト・雑貨',   emoji:'🌸' },
-  { id:'ca03', name:'キッズアトリエ',       category:'体験・アクティビティ', emoji:'🎨' },
-  { id:'ca04', name:'アロマテラピー',       category:'ウェルネス',       emoji:'🌿' },
-  { id:'ca05', name:'ミュージックステージ', category:'エンタメ',         emoji:'🎵' },
-  { id:'ca06', name:'エコショップ',         category:'サステナブル',     emoji:'♻️' },
-  { id:'ca07', name:'ウッドクラフト工房',   category:'クラフト・雑貨',   emoji:'🪵' },
-  { id:'ca08', name:'ヨガスタジオ',         category:'体験・アクティビティ', emoji:'🧘' },
+  { id:'ca01', name:'砂川自治連合会', category:'地域でお祭り！', emoji:'🏮' },
+  { id:'ca02', name:'京都奏和高校', category:'まちのだれかを笑顔に！', emoji:'😊' },
+  { id:'ca03', name:'近江麦酒＆京都風緑', category:'深草レモンを応援！', emoji:'🍋' },
+  { id:'ca04', name:'龍谷大学・学生チーム', category:'環境を楽しく学ぼう！', emoji:'🎓' },
+  { id:'ca05', name:'NPOハピネス', category:'子ども食堂を応援！', emoji:'🍛' },
+  { id:'ca06', name:'さとやまワクワク研究所', category:'自然を身近に体験！', emoji:'🌳' },
 ];
 
 // ============================================================
@@ -99,7 +100,7 @@ const DemoDB = {
     try { d = JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch {}
     if (!d) {
       d = {
-        settings: { event_name:'公園フェス2026', voting_open:false, interim_revealed:false, results_revealed:false },
+        settings: { event_name:'COCO循環マルシェ', voting_open:false, interim_revealed:false, results_revealed:false },
         pw: 'admin1234',
         exhibitors: DEFAULT_EXHIBITORS.map((e, i) => ({ ...e, sort:i })),
         candidates: DEFAULT_CANDIDATES.map((c, i) => ({ ...c, sort:i })),
@@ -328,12 +329,20 @@ async function ensureMe() {
   return true;
 }
 
-// CO2表示フォーマット (kg単位、小さい場合はg表示)
+// CO2表示フォーマット（DB は kg、画面は g 表示。例 0.2 → "200g"、12.5 → "12,500g"）
 function fmtCO2(kg) {
-  kg = Number(kg) || 0;
-  if (kg === 0) return '0g';
-  if (kg < 1) return Math.round(kg * 1000) + 'g';
-  return kg.toFixed(1) + 'kg';
+  const g = Math.round((Number(kg) || 0) * 1000);
+  return g.toLocaleString('ja-JP') + 'g';
+}
+
+const APP_TITLE = '脱炭素スタンプラリー＆応援投票';
+const LOGO_SRC  = 'cocomarche_logo-02.jpg';
+
+// ロゴ画像（読み込めなかった場合はイベント名の文字を表示）
+function logoHtml(cls) {
+  return `<img src="${LOGO_SRC}" alt="${esc(C.settings.event_name)}" class="${cls}"
+      onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden')">
+    <div class="hidden text-xl font-bold text-teal-700 text-center">${esc(C.settings.event_name)}</div>`;
 }
 
 function fmtTime() {
@@ -482,6 +491,11 @@ function pageLocked(msg) {
   </div>`;
 }
 
+// ブースの脱炭素アクション（1行）
+function actionLine(ex, extra = '') {
+  return ex.action ? `<div class="text-xs text-emerald-600 truncate ${extra}">🌱 ${esc(ex.action)}</div>` : '';
+}
+
 function groupBy(items) {
   const groups = {};
   items.forEach(x => { (groups[x.category] = groups[x.category] || []).push(x); });
@@ -494,9 +508,11 @@ function groupBy(items) {
 function pageWelcome() {
   return `
   <div class="page min-h-screen flex flex-col items-center justify-center p-6">
-    <div class="text-7xl mb-3">🌿</div>
-    <h1 class="text-2xl font-bold text-green-700">${esc(C.settings.event_name)}</h1>
-    <p class="text-gray-400 text-sm mb-10">スタンプラリー＆投票</p>
+    <div class="w-full bg-white rounded-2xl shadow-sm px-4 py-5 mb-6">
+      ${logoHtml('w-full max-w-xs mx-auto')}
+    </div>
+    <h1 class="text-xl font-bold text-teal-700 text-center leading-snug">脱炭素スタンプラリー<br>＆応援投票</h1>
+    <p class="text-gray-400 text-xs mb-8 mt-2 text-center">ブースを回ってスタンプを集め、<br>応援したい団体に投票しよう！</p>
 
     <div class="w-full bg-white rounded-2xl shadow-sm p-6">
       <p class="text-sm text-gray-500 mb-3">ニックネームを入力して始めよう！</p>
@@ -550,10 +566,11 @@ function pageHome() {
 
   return `
   <div class="page p-4">
+    <div class="mb-3 px-6">${logoHtml('h-9 mx-auto')}</div>
     <!-- Hero card -->
     <div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-2xl p-5 mb-4 relative overflow-hidden">
       <div class="absolute -top-4 -right-4 text-9xl opacity-10 select-none">🌿</div>
-      <p class="text-green-100 text-xs mb-1">${esc(s.event_name)}</p>
+      <p class="text-green-100 text-xs mb-1">${APP_TITLE}</p>
       <h1 class="text-xl font-bold">こんにちは、${esc(V.nick())}さん！</h1>
       <div class="mt-4 grid grid-cols-3 gap-2 text-center">
         <div class="bg-white bg-opacity-20 rounded-xl py-2">
@@ -631,7 +648,7 @@ function pageHome() {
             <span class="text-2xl">${esc(ex.emoji)}</span>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-medium truncate">${esc(ex.name)}</div>
-              <div class="text-xs text-gray-400">${esc(ex.category)}</div>
+              ${ex.action ? actionLine(ex) : `<div class="text-xs text-gray-400">${esc(ex.category)}</div>`}
             </div>
             <span class="text-green-500 text-xs font-bold shrink-0">✓ 訪問済</span>
           </div>`).join('')}
@@ -683,6 +700,7 @@ function pageScanList() {
               <span class="text-2xl">${esc(ex.emoji)}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium truncate">${esc(ex.name)}</div>
+                ${actionLine(ex)}
               </div>
               ${visited
                 ? '<span class="text-green-500 text-sm font-bold shrink-0">✓</span>'
@@ -794,13 +812,16 @@ function pageScanResult(ex, isNew) {
     <p class="font-medium text-gray-700 mb-1">${esc(ex.name)}</p>
     <p class="text-xs text-gray-400 mb-4">${esc(ex.category)}</p>
 
-    ${ex.co2 ? `
-    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-3 mb-4 flex items-center gap-3">
-      <span class="text-3xl">🌱</span>
-      <div class="text-left">
-        <div class="text-xs text-emerald-500 font-bold">このブースでのCO₂削減</div>
-        <div class="text-2xl font-bold text-emerald-600">${fmtCO2(ex.co2)}</div>
-      </div>
+    ${ex.action || ex.co2 ? `
+    <div class="w-full bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 mb-4 text-left">
+      ${ex.action ? `
+      <div class="text-xs text-emerald-500 font-bold mb-1">🌱 このブースの脱炭素アクション</div>
+      <div class="text-base font-bold text-emerald-700 leading-snug">${esc(ex.action)}</div>` : ''}
+      ${ex.co2 ? `
+      <div class="flex items-baseline justify-between ${ex.action ? 'mt-3 pt-3 border-t border-emerald-200' : ''}">
+        <span class="text-xs text-emerald-500 font-bold">CO₂削減量</span>
+        <span class="text-2xl font-bold text-emerald-600">${fmtCO2(ex.co2)}</span>
+      </div>` : ''}
     </div>` : ''}
 
     <div class="grid grid-cols-2 gap-3 w-full mb-8">
@@ -904,8 +925,9 @@ function pageMe() {
               <span class="text-xl">${esc(ex.emoji)}</span>
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium truncate">${esc(ex.name)}</div>
-                <div class="text-xs text-gray-400">${esc(ex.category)}</div>
+                ${ex.action ? actionLine(ex) : `<div class="text-xs text-gray-400">${esc(ex.category)}</div>`}
               </div>
+              ${ex.co2 ? `<span class="text-xs text-emerald-600 font-bold shrink-0">${fmtCO2(ex.co2)}</span>` : ''}
               <span class="text-green-500 text-xs font-bold">✓</span>
             </div>` : '';
           }).join('')}
@@ -954,7 +976,6 @@ function pageVote() {
   </div>`;
 
   const draft  = cleanDraft();
-  const groups = groupBy(C.candidates);
   const rem    = P.rem();
 
   return `
@@ -981,28 +1002,22 @@ function pageVote() {
       ${rem === 0 ? '✅ 全ポイント配分済み！確定できます。' : `すべてのポイントを配分してから確定できます。あと ${rem} pt 残っています。`}
     </div>
 
-    <div class="space-y-4 mb-6">
-      ${Object.entries(groups).map(([cat, items]) => `
-        <div>
-          <h3 class="text-xs font-bold text-gray-400 mb-2 px-1 uppercase tracking-wider">${esc(cat)}</h3>
-          <div class="space-y-2">
-            ${items.map(c => `
-              <div class="bg-white rounded-xl p-3 shadow-sm flex items-center gap-3">
-                <span class="text-2xl">${esc(c.emoji)}</span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium truncate">${esc(c.name)}</div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <button onclick="chgVote('${c.id}',-1)"
-                    class="w-8 h-8 bg-gray-100 rounded-full font-bold text-gray-500 flex items-center justify-center text-lg leading-none tap-card">−</button>
-                  <span id="vc-${c.id}" class="w-7 text-center font-bold text-green-600">${draft[c.id] || 0}</span>
-                  <button onclick="chgVote('${c.id}',1)"
-                    class="w-8 h-8 bg-green-100 rounded-full font-bold text-green-600 flex items-center justify-center text-lg leading-none tap-card">＋</button>
-                </div>
-              </div>`).join('')}
+    <div class="space-y-2 mb-6">
+      ${C.candidates.map(c => `
+        <div class="bg-white rounded-xl p-3 shadow-sm flex items-center gap-3">
+          <span class="text-2xl">${esc(c.emoji)}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium leading-snug">${esc(c.name)}</div>
+            ${c.category && c.category !== 'その他' ? `<div class="text-xs text-gray-400 leading-snug mt-0.5">${esc(c.category)}</div>` : ''}
           </div>
-        </div>
-      `).join('')}
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="chgVote('${c.id}',-1)"
+              class="w-8 h-8 bg-gray-100 rounded-full font-bold text-gray-500 flex items-center justify-center text-lg leading-none tap-card">−</button>
+            <span id="vc-${c.id}" class="w-7 text-center font-bold text-green-600">${draft[c.id] || 0}</span>
+            <button onclick="chgVote('${c.id}',1)"
+              class="w-8 h-8 bg-green-100 rounded-full font-bold text-green-600 flex items-center justify-center text-lg leading-none tap-card">＋</button>
+          </div>
+        </div>`).join('')}
     </div>
 
     <button id="submitBtn" onclick="confirmVote()"
@@ -1477,6 +1492,7 @@ function pageAdminQR() {
         <div class="text-2xl mb-1">${esc(ex.emoji)}</div>
         <div class="font-bold text-sm leading-tight mb-0.5">${esc(ex.name)}</div>
         <div class="text-xs text-gray-400 mb-1">${esc(ex.category)}</div>
+        ${ex.action ? `<div class="text-xs text-emerald-700 mb-0.5">${esc(ex.action)}</div>` : ''}
         ${ex.co2 ? `<div class="text-xs text-emerald-600 font-bold mb-2">🌱 CO₂削減 ${fmtCO2(ex.co2)}</div>` : ''}
         <div id="qr-${ex.id}" class="flex justify-center items-center min-h-[100px]">
           <div class="text-gray-200 text-xs">生成中...</div>
@@ -1528,7 +1544,8 @@ function pageAdminBooths() {
           <span class="text-xl">${esc(b.emoji)}</span>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate">${esc(b.name)}</div>
-            <div class="text-xs text-gray-400">${esc(b.category)}${b.co2 ? ` · 🌱 ${fmtCO2(b.co2)}` : ''}</div>
+            <div class="text-xs text-gray-400">${esc(b.category)}${b.co2 ? ` · ${fmtCO2(b.co2)}` : ''}</div>
+            ${actionLine(b)}
           </div>
           <button onclick="removeBooth('${b.id}')"
             class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card shrink-0">削除</button>
@@ -1539,17 +1556,22 @@ function pageAdminBooths() {
       <h3 class="font-bold text-gray-600 text-sm mb-3">新しいブースを追加</h3>
       <div class="mb-2">
         <label class="text-xs text-gray-400">ブース名</label>
-        <input id="bName" type="text" placeholder="例：グリーンカフェ"
+        <input id="bName" type="text" placeholder="例：こむすび"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
       </div>
       <div class="mb-2">
-        <label class="text-xs text-gray-400">カテゴリ</label>
-        <input id="bCat" type="text" placeholder="例：フード・ドリンク"
+        <label class="text-xs text-gray-400">ゾーン</label>
+        <input id="bCat" type="text" placeholder="例：飲食ゾーン"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
       </div>
       <div class="mb-2">
-        <label class="text-xs text-gray-400">CO₂削減量（kg）</label>
-        <input id="bCO2" type="number" step="0.1" min="0" placeholder="例：0.5"
+        <label class="text-xs text-gray-400">脱炭素アクション</label>
+        <input id="bAction" type="text" maxlength="100" placeholder="例：地元産の食品を買う"
+          class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
+      </div>
+      <div class="mb-2">
+        <label class="text-xs text-gray-400">CO₂削減量（g）</label>
+        <input id="bCO2" type="number" step="1" min="0" placeholder="例：500"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-200">
       </div>
       <div class="mb-3">
@@ -1583,9 +1605,10 @@ function addBooth() {
   const name  = document.getElementById('bName').value.trim();
   const cat   = document.getElementById('bCat').value.trim();
   const emoji = document.getElementById('bEmoji').value.trim() || '🏪';
-  const co2   = parseFloat(document.getElementById('bCO2').value) || 0;
+  const co2   = (parseFloat(document.getElementById('bCO2').value) || 0) / 1000;   // g → kg
+  const action = document.getElementById('bAction').value.trim();
   if (!name) { document.getElementById('bName').classList.add('ring-2','ring-red-300'); return; }
-  adminDo(pw => API.adminUpsertExhibitor(pw, { id:'ex' + Date.now(), name, category:cat || 'その他', emoji, co2 }));
+  adminDo(pw => API.adminUpsertExhibitor(pw, { id:'ex' + Date.now(), name, category:cat || 'その他', emoji, co2, action }));
 }
 
 function removeBooth(id) {
@@ -1628,12 +1651,12 @@ function pageAdminCandidates() {
       <h3 class="font-bold text-gray-600 text-sm mb-3">新しい投票対象を追加</h3>
       <div class="mb-2">
         <label class="text-xs text-gray-400">名前</label>
-        <input id="cName" type="text" placeholder="例：グリーンカフェ"
+        <input id="cName" type="text" placeholder="例：NPOハピネス"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-purple-200">
       </div>
       <div class="mb-2">
-        <label class="text-xs text-gray-400">カテゴリ</label>
-        <input id="cCat" type="text" placeholder="例：フード・ドリンク"
+        <label class="text-xs text-gray-400">団体の解説（投票画面で名前の下に表示）</label>
+        <input id="cCat" type="text" placeholder="例：子ども食堂を応援！"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-purple-200">
       </div>
       <div class="mb-3">
