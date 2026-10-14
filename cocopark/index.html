@@ -1590,6 +1590,7 @@ window.addEventListener('afterprint', () => document.body.classList.remove('prin
 // ADMIN: BOOTHS MANAGEMENT
 // ============================================================
 function pageAdminBooths() {
+  _editBoothId = null;   // 画面を描き直したら追加モードに戻す
   const booths = C.exhibitors;
   const EMOJIS = ['☕','🍱','🥤','🧁','🌸','🪵','💍','🕯️','🖼️','🎨','🧘','📸','⚽','🌿','💆','🌱','🎵','🐾','♻️','🥦','🏆','🌟','🎯','🍀'];
 
@@ -1613,13 +1614,17 @@ function pageAdminBooths() {
             <div class="text-xs text-gray-400">${esc(b.category)}${b.co2 ? ` · ${fmtCO2(b.co2)}` : ''}</div>
             ${actionLine(b)}
           </div>
-          <button onclick="removeBooth('${b.id}')"
-            class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card shrink-0">削除</button>
+          <div class="flex flex-col gap-1 shrink-0">
+            <button onclick="editBooth('${b.id}')"
+              class="text-xs text-green-700 px-2 py-1 border border-green-200 rounded-lg tap-card">編集</button>
+            <button onclick="removeBooth('${b.id}')"
+              class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card">削除</button>
+          </div>
         </div>`).join('')}
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
-      <h3 class="font-bold text-gray-600 text-sm mb-3">新しいブースを追加</h3>
+    <div id="bForm" class="bg-white rounded-2xl shadow-sm p-4 mb-4 border-2 border-transparent">
+      <h3 id="bFormTitle" class="font-bold text-gray-600 text-sm mb-3">新しいブースを追加</h3>
       <div class="mb-2">
         <label class="text-xs text-gray-400">ブース名</label>
         <input id="bName" type="text" placeholder="例：こむすび"
@@ -1648,8 +1653,11 @@ function pageAdminBooths() {
         <input id="bEmoji" type="text" value="🏪" placeholder="絵文字"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-green-200">
       </div>
-      <button onclick="addBooth()" class="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl tap-card">
+      <button id="bSubmit" onclick="saveBooth()" class="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl tap-card">
         ＋ 追加する
+      </button>
+      <button id="bCancel" onclick="render()" class="hidden w-full mt-2 text-sm text-gray-500 py-2 rounded-xl border border-gray-200 tap-card">
+        編集をやめる
       </button>
     </div>
 
@@ -1667,14 +1675,44 @@ function selectEmoji(inputId, btnClass, e) {
   });
 }
 
-function addBooth() {
+// 追加・編集フォームを編集モードにする（IDは変えないので印刷済みQRもそのまま使える）
+let _editBoothId = null;
+let _editCandId  = null;
+
+function setEditMode(prefix, id, title, color) {
+  const form = document.getElementById(prefix + 'Form');
+  document.getElementById(prefix + 'FormTitle').textContent = title;
+  document.getElementById(prefix + 'Submit').textContent = '💾 保存する';
+  document.getElementById(prefix + 'Cancel').classList.remove('hidden');
+  form.classList.remove('border-transparent');
+  form.classList.add(color);
+  form.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function editBooth(id) {
+  const b = C.exhibitors.find(x => x.id === id);
+  if (!b) return;
+  _editBoothId = id;
+  document.getElementById('bName').value   = b.name;
+  document.getElementById('bCat').value    = b.category === 'その他' ? '' : b.category;
+  document.getElementById('bAction').value = b.action || '';
+  document.getElementById('bCO2').value    = Math.round((Number(b.co2) || 0) * 1000);   // kg → g
+  document.getElementById('bEmoji').value  = b.emoji;
+  setEditMode('b', id, `✏️ ブースを編集（ID: ${id}）`, 'border-green-300');
+}
+
+function saveBooth() {
   const name  = document.getElementById('bName').value.trim();
   const cat   = document.getElementById('bCat').value.trim();
   const emoji = document.getElementById('bEmoji').value.trim() || '🏪';
   const co2   = (parseFloat(document.getElementById('bCO2').value) || 0) / 1000;   // g → kg
   const action = document.getElementById('bAction').value.trim();
   if (!name) { document.getElementById('bName').classList.add('ring-2','ring-red-300'); return; }
-  adminDo(pw => API.adminUpsertExhibitor(pw, { id:'ex' + Date.now(), name, category:cat || 'その他', emoji, co2, action }));
+  const id = _editBoothId || 'ex' + Date.now();
+  adminDo(async pw => {
+    await API.adminUpsertExhibitor(pw, { id, name, category:cat || 'その他', emoji, co2, action });
+    _editBoothId = null;
+  });
 }
 
 function removeBooth(id) {
@@ -1686,6 +1724,7 @@ function removeBooth(id) {
 // ADMIN: CANDIDATES MANAGEMENT
 // ============================================================
 function pageAdminCandidates() {
+  _editCandId = null;    // 画面を描き直したら追加モードに戻す
   const cands  = C.candidates;
   const EMOJIS = ['🏆','🌟','🎯','🎨','🍀','🌸','🎵','🌿','☕','🧁','🪵','💍','🕯️','🖼️','🧘','📸','⚽','💆','🌱','🐾','♻️','🥦','🥤','🍱'];
 
@@ -1708,13 +1747,17 @@ function pageAdminCandidates() {
             <div class="text-sm font-medium truncate">${esc(c.name)}</div>
             <div class="text-xs text-gray-400">${esc(c.category)}</div>
           </div>
-          <button onclick="removeCandidate('${c.id}')"
-            class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card shrink-0">削除</button>
+          <div class="flex flex-col gap-1 shrink-0">
+            <button onclick="editCandidate('${c.id}')"
+              class="text-xs text-purple-600 px-2 py-1 border border-purple-200 rounded-lg tap-card">編集</button>
+            <button onclick="removeCandidate('${c.id}')"
+              class="text-xs text-red-400 px-2 py-1 border border-red-200 rounded-lg tap-card">削除</button>
+          </div>
         </div>`).join('')}
     </div>
 
-    <div class="bg-white rounded-2xl shadow-sm p-4 mb-4">
-      <h3 class="font-bold text-gray-600 text-sm mb-3">新しい投票対象を追加</h3>
+    <div id="cForm" class="bg-white rounded-2xl shadow-sm p-4 mb-4 border-2 border-transparent">
+      <h3 id="cFormTitle" class="font-bold text-gray-600 text-sm mb-3">新しい投票対象を追加</h3>
       <div class="mb-2">
         <label class="text-xs text-gray-400">名前</label>
         <input id="cName" type="text" placeholder="例：NPOハピネス"
@@ -1733,19 +1776,36 @@ function pageAdminCandidates() {
         <input id="cEmoji" type="text" value="🏆" placeholder="絵文字"
           class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-purple-200">
       </div>
-      <button onclick="addCandidate()" class="w-full bg-purple-500 text-white font-bold py-2.5 rounded-xl tap-card">
+      <button id="cSubmit" onclick="saveCandidate()" class="w-full bg-purple-500 text-white font-bold py-2.5 rounded-xl tap-card">
         ＋ 追加する
+      </button>
+      <button id="cCancel" onclick="render()" class="hidden w-full mt-2 text-sm text-gray-500 py-2 rounded-xl border border-gray-200 tap-card">
+        編集をやめる
       </button>
     </div>
   </div>`;
 }
 
-function addCandidate() {
+function editCandidate(id) {
+  const c = C.candidates.find(x => x.id === id);
+  if (!c) return;
+  _editCandId = id;
+  document.getElementById('cName').value  = c.name;
+  document.getElementById('cCat').value   = c.category === 'その他' ? '' : c.category;
+  document.getElementById('cEmoji').value = c.emoji;
+  setEditMode('c', id, `✏️ 投票対象を編集（ID: ${id}）`, 'border-purple-300');
+}
+
+function saveCandidate() {
   const name  = document.getElementById('cName').value.trim();
   const cat   = document.getElementById('cCat').value.trim();
   const emoji = document.getElementById('cEmoji').value.trim() || '🏆';
   if (!name) { document.getElementById('cName').classList.add('ring-2','ring-red-300'); return; }
-  adminDo(pw => API.adminUpsertCandidate(pw, { id:'ca' + Date.now(), name, category:cat || 'その他', emoji }));
+  const id = _editCandId || 'ca' + Date.now();
+  adminDo(async pw => {
+    await API.adminUpsertCandidate(pw, { id, name, category:cat || 'その他', emoji });
+    _editCandId = null;
+  });
 }
 
 function removeCandidate(id) {
