@@ -22,6 +22,11 @@
     #qr-reader { background: #111827; }
     #qr-reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
     .spinner { width: 28px; height: 28px; border: 3px solid #d1fae5; border-top-color: #22c55e; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .coin { border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; font-weight: 900; color: #78350f;
+            background: radial-gradient(circle at 32% 28%, #fef3c7, #fbbf24 55%, #d97706); border: 4px solid #b45309; box-shadow: inset 0 0 0 4px #fde68a; }
+    .coin.used { filter: grayscale(1); opacity: 0.55; }
+    .coin-spin { animation: coinSpin 1.8s ease-in-out infinite; }
+    @keyframes coinSpin { 0%, 100% { transform: rotateY(-35deg); } 50% { transform: rotateY(35deg); } }
     .qr-small img, .qr-small canvas { width: 110px !important; height: 110px !important; }
     .a4-qr img, .a4-qr canvas { width: 115mm !important; height: 115mm !important; }
     .a4-sheets { display: none; }
@@ -127,7 +132,7 @@ const DemoAPI = {
     if (!d.visitors[vid]) return { exists:false, scans:[], votes:{} };
     const votes = {};
     d.votes.filter(v => v.v === vid).forEach(v => { votes[v.c] = (votes[v.c] || 0) + v.p; });
-    return { exists:true, scans:d.scans.filter(s => s.v === vid).map(s => s.e), votes };
+    return { exists:true, scans:d.scans.filter(s => s.v === vid).map(s => s.e), votes, coin_used:!!d.visitors[vid].coin_used };
   },
   async submitSurvey(vid, survey) {
     if (!SURVEY.every(q => q.options.includes(survey[q.key]))) throw new Error('invalid_survey');
@@ -144,6 +149,7 @@ const DemoAPI = {
     const d = DemoDB.load();
     if (!d.visitors[vid]) throw new Error('unknown_visitor');
     if (!d.exhibitors.some(e => e.id === eid)) throw new Error('invalid_exhibitor');
+    if (!d.scans.some(s => s.v === vid && s.e === SURVEY_ID)) throw new Error('survey_required');
     if (d.scans.some(s => s.v === vid && s.e === eid)) return false;
     d.scans.push({ v:vid, e:eid });
     DemoDB.save(d);
@@ -161,6 +167,15 @@ const DemoAPI = {
     if (req !== total - spent) throw new Error('points_mismatch');
     if (entries.some(([c]) => !d.candidates.some(x => x.id === c))) throw new Error('invalid_candidate');
     entries.forEach(([c, n]) => d.votes.push({ v:vid, c, p:n }));
+    DemoDB.save(d);
+    return true;
+  },
+  async useCoin(vid) {
+    const d = DemoDB.load();
+    if (!d.visitors[vid]) throw new Error('unknown_visitor');
+    if (d.votes.filter(v => v.v === vid).reduce((a, v) => a + v.p, 0) < COIN_VOTES) throw new Error('coin_not_earned');
+    if (d.visitors[vid].coin_used) return false;
+    d.visitors[vid].coin_used = true;
     DemoDB.save(d);
     return true;
   },
@@ -254,6 +269,7 @@ const RemoteAPI = {
   getMe:                (vid)        => rpc('get_me', { p_visitor:vid }),
   addScan:              (vid, eid)   => rpc('add_scan', { p_visitor:vid, p_exhibitor:eid }),
   submitVotes:          (vid, votes) => rpc('submit_votes', { p_visitor:vid, p_votes:votes }),
+  useCoin:              (vid)        => rpc('use_coin', { p_visitor:vid }),
   getResults:           (pw)         => rpc('get_results', { p_pw:pw || null }),
   adminLogin:           (pw)         => rpc('admin_login', { p_pw:pw }),
   adminUpdateSettings:  (pw, patch)  => rpc('admin_update_settings', { p_pw:pw, p_patch:patch }),
@@ -276,6 +292,8 @@ const ERR = {
   empty:             'ポイントを配分してください',
   invalid_candidate: '投票対象が見つかりません。画面を更新してください。',
   invalid_survey:    'アンケートの回答を確認してください。',
+  survey_required:   '先にアンケートに答えてください。',
+  coin_not_earned:   'コインをもらうには合計4票の投票が必要です。',
 };
 function errMsg(e) {
   const m = e?.message || '';
@@ -333,7 +351,7 @@ async function ensureMe() {
   const valid = DEMO || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vid);
   const me = valid ? await API.getMe(vid) : { exists:false };
   if (!me.exists) { V.clear(); go('/'); return false; }
-  C.me = { scans:me.scans || [], votes:me.votes || {} };
+  C.me = { scans:me.scans || [], votes:me.votes || {}, coin_used:!!me.coin_used };
   return true;
 }
 
@@ -341,6 +359,10 @@ const APP_TITLE = 'スタンプラリー＆応援投票';
 
 // 管理画面で登録した「アンケートに答えよう」ブースをアンケートとして扱う（印刷済みQRのIDと同じ）
 const SURVEY_ID = 'ex1794215890726';
+
+// この票数を投票するとガチャコインがもらえる（変えるときは supabase の use_coin 関数も合わせて変更する）
+const COIN_VOTES = 4;
+const coinEarned = () => P.spent() >= COIN_VOTES;
 
 // アンケートの設問（選択肢を変えるときは supabase の submit_survey 関数も合わせて変更する）
 const SURVEY = [
@@ -447,10 +469,12 @@ async function buildPage(path) {
     if (!ex) { await loadPublic(true); ex = C.exhibitors.find(e => e.id === id); }   // 直前に追加されたブースかもしれない
     if (!ex) return pageScanInvalid();
     if (id === SURVEY_ID) return C.me.scans.includes(id) ? pageScanResult(ex, false) : pageSurvey();
+    if (!C.me.scans.includes(SURVEY_ID)) return pageSurvey(ex);   // アンケートが先。回答するとこのブースのスタンプも押す
     const isNew = await API.addScan(V.vid(), id);
     if (isNew) C.me.scans.push(id);
     return pageScanResult(ex, isNew);
   }
+  if (path === '/coin') return pageCoin();
   if (path === '/me')   return pageMe();
   if (path === '/vote') return pageVote();
   return `<div class="p-8 text-center text-gray-400">ページが見つかりません</div>`;
@@ -526,7 +550,7 @@ function pageWelcome() {
         class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3.5 rounded-xl text-lg transition-colors">
         はじめる 🎉
       </button>
-      ${localStorage.getItem(NS + 'pendingScan') ? `<p class="text-xs text-green-600 mt-3 text-center">${localStorage.getItem(NS + 'pendingScan') === '/scan/' + SURVEY_ID ? '登録が終わると、アンケート画面に進みます' : '登録が終わると、読み取ったブースのスタンプが押されます'}</p>` : ''}
+      ${localStorage.getItem(NS + 'pendingScan') ? `<p class="text-xs text-green-600 mt-3 text-center">${localStorage.getItem(NS + 'pendingScan') === '/scan/' + SURVEY_ID ? '登録が終わると、アンケート画面に進みます' : '登録後のアンケートに答えると、読み取ったブースのスタンプも押されます'}</p>` : ''}
       <p class="text-xs text-gray-400 mt-4 text-center">※ ログデータは分析に利用することがあります</p>
     </div>
 
@@ -589,6 +613,18 @@ function pageHome() {
         </div>
       </div>
     </div>
+
+    ${C.me.scans.includes(SURVEY_ID) ? '' : `
+    <div onclick="go('/scan/${SURVEY_ID}')" class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 mb-4 tap-card flex items-center gap-3">
+      <span class="text-4xl">📝</span>
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-amber-800">まずはアンケートに答えよう</div>
+        <div class="text-xs text-amber-700 mt-0.5">回答するとスタンプが集められるようになります</div>
+      </div>
+      <span class="text-amber-500 text-xl">›</span>
+    </div>`}
+
+    ${coinCard()}
 
     <!-- Progress bar -->
     <div class="bg-white rounded-2xl p-4 mb-4 shadow-sm">
@@ -801,9 +837,12 @@ function pageScanInvalid() {
   </div>`;
 }
 
-function pageSurvey() {
+function pageSurvey(nextEx) {
   return `
   <div class="page p-4">
+    ${nextEx ? `<div class="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 text-sm text-amber-800">
+      <b>先にアンケートにお答えください。</b><br>回答すると、アンケートと「${esc(nextEx.name)}」のスタンプが両方もらえます。
+    </div>` : ''}
     <div class="text-center mb-4">
       <div class="text-6xl mb-2">📝</div>
       <h2 class="text-xl font-bold text-green-700">アンケート</h2>
@@ -851,9 +890,24 @@ async function submitSurvey() {
   btn.disabled = true; btn.textContent = '送信中...';
   try {
     const isNew = await API.submitSurvey(V.vid(), survey);
-    if (isNew) C.me.scans.push(SURVEY_ID);
+    if (!C.me.scans.includes(SURVEY_ID)) C.me.scans.push(SURVEY_ID);
     const ex = C.exhibitors.find(e => e.id === SURVEY_ID);
-    document.getElementById('app').innerHTML = pageScanResult(ex, isNew);
+    let html = pageScanResult(ex, isNew);
+    // ほかのブースのQRから来た場合は、そのブースのスタンプも押す
+    const boothId = decodeURIComponent(currentPath().split('/')[2] || '');
+    const booth = boothId !== SURVEY_ID && C.exhibitors.find(e => e.id === boothId);
+    if (booth) {
+      try {
+        if (await API.addScan(V.vid(), booth.id)) {
+          C.me.scans.push(booth.id);
+          html = pageScanResult(booth, true, 'アンケートのスタンプも押されました');
+        }
+      } catch (e) {
+        console.error(e);
+        html = pageScanResult(ex, isNew, 'ブースのスタンプは押せませんでした。もう一度ブースのQRコードを読み取ってください。');
+      }
+    }
+    document.getElementById('app').innerHTML = html;
     window.scrollTo(0, 0);
   } catch (e) {
     alert(errMsg(e));
@@ -861,7 +915,7 @@ async function submitSurvey() {
   }
 }
 
-function pageScanResult(ex, isNew) {
+function pageScanResult(ex, isNew, note) {
   const total = P.total();
 
   return isNew ? `
@@ -871,6 +925,7 @@ function pageScanResult(ex, isNew) {
     <h2 class="text-2xl font-bold text-green-600 mb-1">スタンプゲット！</h2>
     <p class="font-medium text-gray-700 mb-1">${esc(ex.name)}</p>
     <p class="text-xs text-gray-400 mb-4">${catText(ex.category)}</p>
+    ${note ? `<p class="text-sm font-bold text-green-700 mb-4">${esc(note)}</p>` : ''}
 
     <div class="w-full bg-green-50 border border-green-200 rounded-2xl py-3 mb-8">
       <div class="text-2xl font-bold text-green-600">${total}</div>
@@ -897,6 +952,77 @@ function pageScanResult(ex, isNew) {
 }
 
 // ============================================================
+// ガチャコイン（合計4票の投票で1枚。係の人が使用済みにする）
+// ============================================================
+function coinCard() {
+  if (!coinEarned()) return `
+    <div class="bg-amber-50 rounded-xl p-3 mb-4 text-center text-sm text-amber-800">
+      合計${COIN_VOTES}票投票すると<b>ガチャコイン</b>がもらえます（あと${COIN_VOTES - P.spent()}票）
+    </div>`;
+  const used = C.me.coin_used;
+  return `
+    <div onclick="go('/coin')" class="${used ? 'bg-gray-100' : 'bg-amber-100 border-2 border-amber-400'} rounded-2xl p-4 mb-4 tap-card flex items-center gap-3">
+      <div class="coin ${used ? 'used' : ''}" style="width:56px;height:56px;font-size:12px">ガチャ</div>
+      <div class="flex-1 min-w-0">
+        <div class="font-bold ${used ? 'text-gray-500' : 'text-amber-900'}">${used ? 'ガチャコイン（使用済み）' : 'ガチャコインをゲット！'}</div>
+        <div class="text-xs ${used ? 'text-gray-400' : 'text-amber-800'} mt-0.5">${used ? 'ご参加ありがとうございました' : 'タップして係の人に見せてください'}</div>
+      </div>
+      <span class="${used ? 'text-gray-400' : 'text-amber-600'} text-xl">›</span>
+    </div>`;
+}
+
+function pageCoin() {
+  if (!coinEarned()) return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="coin used mb-5" style="width:140px;height:140px;font-size:28px">ガチャ</div>
+    <h2 class="text-xl font-bold mb-2">コインはまだありません</h2>
+    <p class="text-gray-400 text-sm mb-8">合計${COIN_VOTES}票投票するともらえます（あと${COIN_VOTES - P.spent()}票）</p>
+    <button onclick="go('/home')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl tap-card">ホームに戻る</button>
+  </div>`;
+
+  if (C.me.coin_used) return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <div class="relative mb-5">
+      <div class="coin used" style="width:200px;height:200px;font-size:40px">ガチャ</div>
+      <div class="absolute inset-0 flex items-center justify-center">
+        <span class="bg-white border-4 border-red-500 text-red-500 font-bold text-2xl px-3 py-1 rounded-lg" style="transform:rotate(-14deg)">使用済み</span>
+      </div>
+    </div>
+    <h2 class="text-xl font-bold text-gray-500 mb-1">このコインは使用済みです</h2>
+    <p class="text-sm text-gray-400 mb-8">${esc(V.nick())}さん、ご参加ありがとうございました！</p>
+    <button onclick="go('/home')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3.5 rounded-xl tap-card">ホームに戻る</button>
+  </div>`;
+
+  return `
+  <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
+    <h2 class="text-2xl font-bold text-amber-600 mb-1">ガチャコイン ゲット！</h2>
+    <p class="text-sm text-gray-500 mb-5">${esc(V.nick())}さん、投票ありがとうございます！</p>
+    <div style="perspective:600px" class="mb-5">
+      <div class="coin coin-spin" style="width:200px;height:200px;font-size:40px">ガチャ</div>
+    </div>
+    <p class="font-bold text-gray-700 leading-relaxed mb-8">この画面を係の人に見せると<br><span class="text-amber-600 text-lg">ガチャガチャを1回</span>回せます</p>
+    <div class="w-full border-t border-dashed border-gray-300 pt-4">
+      <p class="text-xs text-gray-400 mb-2">ここから下は係の人が操作します</p>
+      <button id="coinBtn" onclick="useCoin()" class="w-full bg-gray-700 text-white font-bold py-3.5 rounded-xl tap-card">係の人：使用済みにする</button>
+    </div>
+    <button onclick="go('/home')" class="mt-4 text-sm text-green-500 underline">ホームに戻る</button>
+  </div>`;
+}
+
+async function useCoin() {
+  if (!confirm('【係の人が操作してください】\nこのコインを使用済みにします。\n元に戻すことはできません。よろしいですか？')) return;
+  const btn = document.getElementById('coinBtn');
+  btn.disabled = true; btn.textContent = '送信中...';
+  try {
+    await API.useCoin(V.vid());
+    render();
+  } catch (e) {
+    alert(errMsg(e));
+    btn.disabled = false; btn.textContent = '係の人：使用済みにする';
+  }
+}
+
+// ============================================================
 // PAGE: MY PAGE
 // ============================================================
 function pageMe() {
@@ -916,6 +1042,8 @@ function pageMe() {
       <h3 class="font-bold text-lg">${esc(V.nick())}</h3>
       <p class="text-xs text-gray-400">来場者</p>
     </div>
+
+    ${coinEarned() ? coinCard() : ''}
 
     <div class="grid grid-cols-3 gap-3 mb-3">
       <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
@@ -985,7 +1113,8 @@ function pageVote() {
     <div class="text-7xl mb-4">✅</div>
     <h2 class="text-xl font-bold mb-2">投票完了！</h2>
     <p class="text-gray-400 text-sm mb-2">結果発表をお待ちください。</p>
-    <p class="text-xs text-green-600 mb-8">新しいブースを訪問すると、追加でポイントが投票できます。</p>
+    <p class="text-xs text-green-600 mb-6">新しいブースを訪問すると、追加でポイントが投票できます。</p>
+    <div class="w-full">${coinCard()}</div>
     <button onclick="go('/scan')" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl mb-3 tap-card">もっとブースを回る 📷</button>
     <button onclick="go('/home')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3 rounded-xl tap-card">ホームへ</button>
   </div>`;
@@ -1116,6 +1245,7 @@ async function confirmVote() {
   try {
     await API.submitVotes(V.vid(), draft);
     V.setDraft({});
+    if (P.spent() < COIN_VOTES && P.spent() + sum(draft) >= COIN_VOTES) { go('/coin'); return; }   // 今回の投票でコイン獲得
   } catch (e) {
     alert(errMsg(e));
     if (e.message === 'points_mismatch') V.setDraft({});
