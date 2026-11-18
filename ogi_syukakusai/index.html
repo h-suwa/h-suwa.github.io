@@ -56,7 +56,7 @@
   <nav id="bottom-nav" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-lg z-50">
     <div class="max-w-md mx-auto flex">
       <button onclick="go('/home')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/home">   <span class="text-xl">🏠</span><span>ホーム</span></button>
-      <button onclick="go('/scan')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/scan">   <span class="text-xl">📷</span><span>スキャン</span></button>
+      <button onclick="go('/scan')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/scan">   <span class="text-xl">📷</span><span>カメラ</span></button>
       <button onclick="go('/vote')"   class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/vote">   <span class="text-xl">🗳️</span><span>投票</span></button>
       <button onclick="go('/me')"     class="nav-btn flex-1 py-3 flex flex-col items-center gap-0.5 text-xs text-gray-400" data-path="/me">     <span class="text-xl">👤</span><span>マイページ</span></button>
     </div>
@@ -536,7 +536,7 @@ function groupBy(items) {
 function pageWelcome() {
   return `
   <div class="page min-h-screen flex flex-col items-center justify-center p-6">
-    <div class="text-7xl mb-3">🌾</div>
+    <img src="logo.png" alt="仰木地域共生協議会" class="w-48 max-w-full mb-4" style="mix-blend-mode:multiply">
     <h1 class="text-2xl font-bold text-green-700 text-center leading-snug">${esc(C.settings.event_name)}</h1>
     <p class="text-base font-bold text-gray-600 text-center mt-1">${APP_TITLE}</p>
     <p class="text-gray-400 text-xs mb-8 mt-2 text-center">ブースを回ってスタンプを集め、<br>応援したい団体に投票しよう！</p>
@@ -601,15 +601,15 @@ function pageHome() {
       <div class="mt-4 grid grid-cols-3 gap-2 text-center">
         <div class="bg-white bg-opacity-20 rounded-xl py-2">
           <div class="text-2xl font-bold">${total}</div>
-          <div class="text-xs text-green-100">スタンプ</div>
+          <div class="text-xs text-green-100">獲得スタンプ</div>
         </div>
         <div class="bg-white bg-opacity-20 rounded-xl py-2">
-          <div class="text-2xl font-bold">${exs.length}</div>
-          <div class="text-xs text-green-100">ブース数</div>
+          <div class="text-2xl font-bold">${Math.max(0, exs.length - total)}</div>
+          <div class="text-xs text-green-100">残りのスタンプ</div>
         </div>
         <div class="bg-white bg-opacity-20 rounded-xl py-2">
           <div class="text-2xl font-bold">${rem}</div>
-          <div class="text-xs text-green-100">残り票</div>
+          <div class="text-xs text-green-100">投票券</div>
         </div>
       </div>
     </div>
@@ -629,7 +629,7 @@ function pageHome() {
     <!-- Progress bar -->
     <div class="bg-white rounded-2xl p-4 mb-4 shadow-sm">
       <div class="flex justify-between text-sm mb-2">
-        <span class="text-gray-500">ブース訪問進捗</span>
+        <span class="text-gray-500">スタンプ獲得数</span>
         <span class="font-bold text-green-600">${total} / ${exs.length}</span>
       </div>
       <div class="bg-gray-100 rounded-full h-3 overflow-hidden">
@@ -642,7 +642,7 @@ function pageHome() {
     <div class="grid grid-cols-2 gap-3 mb-4">
       <div onclick="go('/scan')" class="bg-white rounded-2xl p-4 shadow-sm text-center tap-card border-2 border-dashed border-green-100 hover:border-green-300 transition-colors">
         <div class="text-4xl mb-1">📷</div>
-        <div class="font-bold text-gray-700 text-sm">QRスキャン</div>
+        <div class="font-bold text-gray-700 text-sm">カメラで読み取る</div>
         <div class="text-xs text-gray-400 mt-0.5">ブースを訪問</div>
       </div>
       ${s.voting_open && rem > 0
@@ -707,7 +707,7 @@ function pageScanList() {
   <div class="page p-4">
     <div class="flex items-center gap-2 mb-3">
       <button onclick="go('/home')" class="text-gray-400 text-lg">←</button>
-      <h2 class="text-lg font-bold">QRスキャン</h2>
+      <h2 class="text-lg font-bold">カメラで読み取る</h2>
       <span class="ml-auto text-xs text-green-600 font-bold">${scans.length}/${exs.length} 訪問済</span>
     </div>
 
@@ -917,6 +917,14 @@ async function submitSurvey() {
 
 function pageScanResult(ex, isNew, note) {
   const total = P.total();
+  const complete = C.exhibitors.length > 0 && C.exhibitors.every(e => C.me.scans.includes(e.id));   // 全スタンプ獲得
+  const canVote  = C.settings.voting_open && P.rem() > 0;
+  const toVote = complete && !coinEarned() ? `
+    <div class="w-full bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 mb-4">
+      <p class="font-bold text-amber-800 leading-relaxed">応援したいプロジェクトに投票して<br>ガチャガチャにチャレンジしよう！</p>
+      ${canVote ? '' : '<p class="text-xs text-amber-700 mt-1">投票の受付が始まると、ホームに「投票する」ボタンが出ます</p>'}
+    </div>
+    ${canVote ? `<button onclick="go('/vote')" class="w-full bg-blue-500 text-white font-bold py-3.5 rounded-xl mb-3 tap-card">投票する 🗳️</button>` : ''}` : '';
 
   return isNew ? `
   <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
@@ -927,24 +935,25 @@ function pageScanResult(ex, isNew, note) {
     <p class="text-xs text-gray-400 mb-4">${catText(ex.category)}</p>
     ${note ? `<p class="text-sm font-bold text-green-700 mb-4">${esc(note)}</p>` : ''}
 
-    <div class="w-full bg-green-50 border border-green-200 rounded-2xl py-3 mb-8">
+    <div class="w-full bg-green-50 border border-green-200 rounded-2xl py-3 ${toVote ? 'mb-4' : 'mb-8'}">
       <div class="text-2xl font-bold text-green-600">${total}</div>
       <div class="text-xs text-gray-500">スタンプ合計</div>
     </div>
-    <button onclick="go('/home')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl mb-3 tap-card">
+    ${toVote}
+    <button onclick="go('/home')" class="w-full ${toVote ? 'bg-white border border-gray-200 text-gray-600' : 'bg-green-500 text-white'} font-bold py-3.5 rounded-xl mb-3 tap-card">
       ホームに戻る
     </button>
-    <button onclick="go('/scan')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3.5 rounded-xl tap-card">
-      続けてスキャンする 📷
-    </button>
+    ${complete ? '' : `<button onclick="go('/scan')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3.5 rounded-xl tap-card">
+      続けて読み取る 📷
+    </button>`}
   </div>` : `
   <div class="page min-h-screen flex flex-col items-center justify-center p-6 text-center">
     <div class="text-7xl mb-4">${esc(ex.emoji)}</div>
     <h2 class="text-xl font-bold text-gray-500 mb-2">${ex.id === SURVEY_ID ? 'アンケートは回答済みです' : 'すでに訪問済みです'}</h2>
     <p class="text-gray-400 text-sm mb-8">${esc(ex.name)}</p>
-    <button onclick="go('/scan')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl mb-3 tap-card">
-      別のブースをスキャンする 📷
-    </button>
+    ${complete ? '' : `<button onclick="go('/scan')" class="w-full bg-green-500 text-white font-bold py-3.5 rounded-xl mb-3 tap-card">
+      別のQRコードを読み取る 📷
+    </button>`}
     <button onclick="go('/home')" class="w-full bg-white border border-gray-200 text-gray-600 font-bold py-3.5 rounded-xl tap-card">
       ホームに戻る
     </button>
@@ -957,7 +966,7 @@ function pageScanResult(ex, isNew, note) {
 function coinCard() {
   if (!coinEarned()) return `
     <div class="bg-amber-50 rounded-xl p-3 mb-4 text-center text-sm text-amber-800">
-      合計${COIN_VOTES}票投票すると<b>ガチャコイン</b>がもらえます（あと${COIN_VOTES - P.spent()}票）
+      スタンプを${COIN_VOTES}つ集めて投票すると、<b>ガチャガチャ</b>にチャレンジできます
     </div>`;
   const used = C.me.coin_used;
   return `
@@ -1056,7 +1065,7 @@ function pageMe() {
       </div>
       <div class="bg-white rounded-2xl p-3 shadow-sm text-center">
         <div class="text-2xl font-bold text-orange-400">${P.rem()}</div>
-        <div class="text-xs text-gray-400 mt-0.5">残り票</div>
+        <div class="text-xs text-gray-400 mt-0.5">投票券</div>
       </div>
     </div>
     ${voted.length ? `
@@ -1131,7 +1140,7 @@ function pageVote() {
     <div class="text-7xl mb-4">📷</div>
     <h2 class="text-xl font-bold mb-2">まずブースを訪問しましょう</h2>
     <p class="text-gray-400 text-sm mb-8">QRコードをスキャンするとポイントがもらえます</p>
-    <button onclick="go('/scan')" class="bg-green-500 text-white px-10 py-3 rounded-xl font-bold tap-card">スキャンへ</button>
+    <button onclick="go('/scan')" class="bg-green-500 text-white px-10 py-3 rounded-xl font-bold tap-card">カメラへ</button>
   </div>`;
 
   const draft  = cleanDraft();
