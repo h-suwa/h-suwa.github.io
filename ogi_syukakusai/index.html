@@ -231,6 +231,16 @@ const DemoAPI = {
     d.votes      = d.votes.filter(v => v.c !== id);
     DemoDB.save(d);
   },
+  async adminExport(pw) {
+    const d = this._admin(pw);
+    return {
+      visitors: Object.entries(d.visitors).map(([id, v]) => ({ id, nickname:v.nickname, created_at:null,
+        age_group:v.age_group || null, residence:v.residence || null, heard_from:v.heard_from || null, app_opinion:v.app_opinion || null,
+        coin_used_at: v.coin_used ? new Date().toISOString() : null })),
+      scans: d.scans.map(s => ({ visitor_id:s.v, exhibitor_id:s.e, created_at:null })),
+      votes: d.votes.map(v => ({ visitor_id:v.v, candidate_id:v.c, points:v.p, created_at:null })),
+    };
+  },
   async adminResetAll(pw) {
     const d = this._admin(pw);
     d.visitors = {}; d.scans = []; d.votes = [];
@@ -278,6 +288,7 @@ const RemoteAPI = {
   adminUpsertCandidate: (pw, c)      => rpc('admin_upsert_candidate', { p_pw:pw, p:c }),
   adminDeleteCandidate: (pw, id)     => rpc('admin_delete_candidate', { p_pw:pw, p_id:id }),
   adminResetAll:        (pw)         => rpc('admin_reset_all', { p_pw:pw }),
+  adminExport:          (pw)         => rpc('admin_export', { p_pw:pw }),
 };
 
 const API = DEMO ? DemoAPI : RemoteAPI;
@@ -1591,6 +1602,19 @@ function pageAdminDash(R) {
       </button>
     </div>
 
+    <!-- CSV download -->
+    <div class="bg-white rounded-2xl shadow-sm p-4 mb-6">
+      <h3 class="font-bold text-gray-600 text-sm mb-1">📥 データのダウンロード（CSV）</h3>
+      <p class="text-xs text-gray-400 mb-3">押した時点の最新データを保存します。Excelでそのまま開けます。</p>
+      <div class="grid grid-cols-1 gap-2">
+        ${Object.entries(EXPORTS).map(([k, x]) => `
+        <button onclick="downloadCsv('${k}', this)" class="w-full text-left bg-gray-50 hover:bg-gray-100 rounded-xl px-4 py-2.5 tap-card">
+          <span class="text-sm font-bold text-gray-700">${x.label}</span>
+          <span class="block text-xs text-gray-400">${x.desc}</span>
+        </button>`).join('')}
+      </div>
+    </div>
+
     <!-- Danger zone -->
     <div class="border border-red-100 rounded-2xl p-4">
       <h3 class="font-bold text-red-400 text-sm mb-1">リハーサルデータの消去</h3>
@@ -1610,6 +1634,89 @@ function saveAdminSettings() {
     if (pw) sessionStorage.setItem(NS + 'apw', pw);
     alert('保存しました ✅');
   });
+}
+
+// ---- CSVダウンロード ----
+const jst = (t) => t ? new Date(t).toLocaleString('sv-SE', { timeZone:'Asia/Tokyo' }) : '';
+
+const EXPORTS = {
+  visitors: {
+    label: '👥 来場者一覧', desc: 'ニックネーム・アンケート回答・スタンプ数・投票数・ガチャコイン',
+    rows(D) {
+      return [['ニックネーム', '登録日時', ...SURVEY.map(q => q.q), 'スタンプ数', '投票数', 'ガチャコイン', 'コイン使用日時', '来場者ID'],
+        ...D.visitors.map(v => {
+          const stamps = D.scans.filter(s => s.visitor_id === v.id).length;
+          const votes  = D.votes.filter(t => t.visitor_id === v.id).reduce((a, t) => a + t.points, 0);
+          const coin   = v.coin_used_at ? '使用済み' : (votes >= COIN_VOTES ? '未使用' : '');
+          return [v.nickname, jst(v.created_at), ...SURVEY.map(q => v[q.key] || ''), stamps, votes, coin, jst(v.coin_used_at), v.id];
+        })];
+    },
+  },
+  survey: {
+    label: '📝 アンケート集計', desc: '設問ごと・選択肢ごとの人数',
+    rows(D) {
+      const out = [['設問', '回答', '人数']];
+      SURVEY.forEach(q => q.options.forEach(o => out.push([q.q, o, D.visitors.filter(v => v[q.key] === o).length])));
+      return out;
+    },
+  },
+  results: {
+    label: '🏆 投票結果', desc: '団体ごとの合計ポイントと応援人数',
+    rows(D) {
+      const r = C.candidates.map(c => {
+        const vs = D.votes.filter(t => t.candidate_id === c.id);
+        return [c.name, vs.reduce((a, t) => a + t.points, 0), new Set(vs.map(t => t.visitor_id)).size];
+      }).sort((a, b) => b[1] - a[1] || b[2] - a[2]);
+      return [['順位', '投票対象', '合計ポイント', '応援人数'], ...r.map((x, i) => [i + 1, ...x])];
+    },
+  },
+  scanlog: {
+    label: '⭐ スタンプのログ', desc: '誰が・どのQRを・いつ読み取ったか',
+    rows(D) {
+      const nick = Object.fromEntries(D.visitors.map(v => [v.id, v.nickname]));
+      const name = Object.fromEntries(C.exhibitors.map(e => [e.id, e.name]));
+      return [['ニックネーム', 'ブース', '日時', '来場者ID'],
+        ...D.scans.map(s => [nick[s.visitor_id] || '', name[s.exhibitor_id] || s.exhibitor_id, jst(s.created_at), s.visitor_id])];
+    },
+  },
+  votelog: {
+    label: '🗳️ 投票のログ', desc: '誰が・どこに・何票・いつ投票したか',
+    rows(D) {
+      const nick = Object.fromEntries(D.visitors.map(v => [v.id, v.nickname]));
+      const name = Object.fromEntries(C.candidates.map(c => [c.id, c.name]));
+      return [['ニックネーム', '投票対象', '票数', '日時', '来場者ID'],
+        ...D.votes.map(t => [nick[t.visitor_id] || '', name[t.candidate_id] || t.candidate_id, t.points, jst(t.created_at), t.visitor_id])];
+    },
+  },
+};
+
+function toCsv(rows) {
+  const cell = (x) => {
+    let s = String(x ?? '');
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // Excelで数式として扱われないように
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return '\uFEFF' + rows.map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';   // BOM付きUTF-8（Excelで文字化けしない）
+}
+
+async function downloadCsv(key, btn) {
+  const x = EXPORTS[key];
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="text-sm text-gray-400">作成中...</span>';
+  try {
+    await loadPublic(true);
+    const D = await API.adminExport(adminPw());
+    const blob = new Blob([toCsv(x.rows(D))], { type:'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ogi_syukakusai_${x.label.replace(/^\S+\s/, '')}_${jst(new Date()).replace(/[-:]/g, '').replace(' ', '_').slice(0, 13)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) {
+    alert(errMsg(e));
+    if (e.message === 'unauthorized') { sessionStorage.removeItem(NS + 'apw'); go('/admin'); }
+  }
+  btn.disabled = false; btn.innerHTML = label;
 }
 
 function resetAll() {
